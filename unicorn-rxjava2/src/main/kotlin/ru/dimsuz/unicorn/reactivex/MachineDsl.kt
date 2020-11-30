@@ -48,22 +48,22 @@ class TransitionDsl<S : Any, P : Any, E : Any> private constructor(
     this.reducer = reducer
   }
 
-  fun action(body: (previousState: S, newState: S, payload: P) -> Unit) {
+  fun action(body: (state: S, newState: S, payload: P) -> Unit) {
     if (actionBodies == null) actionBodies = arrayListOf()
     actionBodies!!.add(body)
   }
 
-  fun actionWithEvent(body: (previousState: S, newState: S, payload: P) -> E) {
+  fun actionWithEvent(body: (state: S, newState: S, payload: P) -> E?) {
     if (actionBodiesWithEvent == null) actionBodiesWithEvent = arrayListOf()
     actionBodiesWithEvent!!.add(body)
   }
 
-  fun actionDeferred(body: (previousState: S, newState: S, payload: P) -> Completable) {
+  fun actionDeferred(body: (state: S, newState: S, payload: P) -> Completable) {
     if (actionBodiesDeferred == null) actionBodiesDeferred = arrayListOf()
     actionBodiesDeferred!!.add(body)
   }
 
-  fun actionWithEventDeferred(body: (previousState: S, newState: S, payload: P) -> Single<E>) {
+  fun actionWithEventDeferred(body: (state: S, newState: S, payload: P) -> Single<E>) {
     if (actionBodiesWithEventDeferred == null) actionBodiesWithEventDeferred = arrayListOf()
     actionBodiesWithEventDeferred!!.add(body)
   }
