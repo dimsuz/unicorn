@@ -40,7 +40,7 @@ class TransitionDsl<S : Any, P : Any, E : Any> private constructor(
 
   internal var reducer: ((S, P) -> S)? = null
   internal var actionBodies: MutableList<(S, S, P) -> Unit>? = null
-  internal var actionBodiesWithEvent: MutableList<(S, S, P) -> E>? = null
+  internal var actionBodiesWithEvent: MutableList<(S, S, P) -> E?>? = null
   internal var actionBodiesDeferred: MutableList<(S, S, P) -> Completable>? = null
   internal var actionBodiesWithEventDeferred: MutableList<(S, S, P) -> Single<E>>? = null
 
