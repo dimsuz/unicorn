@@ -7,6 +7,7 @@ import io.kotest.matchers.shouldBe
 import io.reactivex.Observable
 import io.reactivex.observers.TestObserver
 import io.reactivex.subjects.PublishSubject
+import java.util.concurrent.atomic.AtomicInteger
 
 class MachineDslTest : ShouldSpec({
   context("initial state") {
@@ -126,6 +127,46 @@ class MachineDslTest : ShouldSpec({
       )
     }
 
+    should("call transition block only for specific streaming payloads") {
+      var firstBlockCallCount = 0
+      var secondBlockCallCount = 0
+      val m = machine<List<Int>, Unit> {
+        initial = listOf(3) to null
+        onEach(Observable.just(10, 20, 30)) {
+          transitionTo { state, _ ->
+            firstBlockCallCount += 1
+            state
+          }
+        }
+        onEach(Observable.just("a", "b", "c")) {
+          transitionTo { state, _ ->
+            secondBlockCallCount += 1
+            state
+          }
+        }
+      }
+
+      val observer =
+        createSubscribedTestObserver(m.transitionStream.map { it.first })
+      observer.awaitTerminalEvent()
+
+      firstBlockCallCount shouldBe 3
+      secondBlockCallCount shouldBe 3
+    }
+
+    should("subscribe to streamed payloads only once") {
+      val count = AtomicInteger(0)
+      val m = machine<List<Int>, Unit> {
+        initial = listOf(3) to null
+        onEach(Observable.just(10, 20, 30).doOnSubscribe { count.incrementAndGet() }) {
+          transitionTo { state, _ -> state }
+        }
+      }
+
+      createSubscribedTestObserver(m.transitionStream.map { it.first })
+
+      count.get() shouldBe 1
+    }
   }
 
   context("actions") {
@@ -266,6 +307,113 @@ class MachineDslTest : ShouldSpec({
         "action3"
       )
     }
+
+    should("execute action in onEach only once per reduce") {
+      var count = 0
+      val m = machine<Int, Event> {
+        initial = 0 to null
+
+        onEach(Observable.just("1", "2", "3")) {
+          action { _, _, _ ->
+            count += 1
+          }
+        }
+      }
+
+      m.transitionStream
+        .subscribe { (_, actions) -> actions?.blockingAwait() }
+
+      count shouldBe 3
+    }
+
+    should("execute action in on-clause only once per reduce") {
+      var count = 0
+      val m = machine<Int, Event> {
+        initial = 0 to null
+
+        on(Event.E1::class) {
+          action { _, _, _ ->
+            count += 1
+          }
+        }
+      }
+
+      m.transitionStream
+        .subscribe { (_, actions) -> actions?.blockingAwait() }
+      m.send(Event.E1(1))
+      m.send(Event.E1(2))
+      m.send(Event.E1(3))
+
+      count shouldBe 3
+    }
+
+    should("execute corresponding event transition after onEach-action emits an event") {
+      val m = machine<Int, Event> {
+        initial = 0 to null
+
+        onEach(Observable.just("he", "llo")) {
+          actionWithEvent { _, _, _ ->
+            Event.E1(88)
+          }
+        }
+
+        on(Event.E1::class) {
+          transitionTo { state, payload ->
+            state + payload.value
+          }
+        }
+      }
+
+      val states = mutableListOf<Int>()
+      m.transitionStream
+        .subscribe { (s, actions) -> actions?.blockingAwait(); states.add(s) }
+
+      states shouldContainExactly listOf(
+        0, // initial
+        0, // after reducing "he", event E1 fired as a side-effect
+        88, // after receiving E1, reducing it
+        88, // after reducing "llo", event E1 fired as a side-effect
+        176 // after receiving E1, reducing it
+      )
+    }
+
+    should("execute corresponding event transition after on-action emits an event") {
+      val m = machine<Int, Event> {
+        initial = 0 to null
+
+        on(Event.E2::class) {
+          actionWithEvent { _, _, _ ->
+            Event.E1(88)
+          }
+        }
+
+        on(Event.E1::class) {
+          transitionTo { state, payload ->
+            state + payload.value
+          }
+        }
+      }
+
+      val states = mutableListOf<Int>()
+      m.transitionStream
+        .subscribe { (s, actions) -> actions?.blockingAwait(); states.add(s) }
+
+      m.send(Event.E2("he"))
+      m.send(Event.E2("llo"))
+
+      states shouldContainExactly listOf(
+        0, // initial
+        0, // after reducing "he", event E1 fired as a side-effect
+        88, // after receiving E1, reducing it
+        88, // after reducing "llo", event E1 fired as a side-effect
+        176 // after receiving E1, reducing it
+      )
+    }
+
+    // TODO actionDeferred, actionWithEventDeferred
+
+    // TODO error when 2 transitionTo blocks
+    // TODO no error when no transitions and no actions
   }
 })
 
