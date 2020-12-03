@@ -410,8 +410,6 @@ class MachineDslTest : ShouldSpec({
       )
     }
 
-    // TODO actionDeferred, actionWithEventDeferred
-
     // TODO error when 2 transitionTo blocks
     // TODO no error when no transitions and no actions
   }

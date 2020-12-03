@@ -41,8 +41,6 @@ class TransitionDsl<S : Any, P : Any, E : Any> private constructor(
   internal var reducer: ((S, P) -> S)? = null
   internal var actionBodies: MutableList<(S, S, P) -> Unit>? = null
   internal var actionBodiesWithEvent: MutableList<(S, S, P) -> E?>? = null
-  internal var actionBodiesDeferred: MutableList<(S, S, P) -> Completable>? = null
-  internal var actionBodiesWithEventDeferred: MutableList<(S, S, P) -> Single<E>>? = null
 
   fun transitionTo(reducer: (state: S, payload: P) -> S) {
     this.reducer = reducer
@@ -56,16 +54,6 @@ class TransitionDsl<S : Any, P : Any, E : Any> private constructor(
   fun actionWithEvent(body: (state: S, newState: S, payload: P) -> E?) {
     if (actionBodiesWithEvent == null) actionBodiesWithEvent = arrayListOf()
     actionBodiesWithEvent!!.add(body)
-  }
-
-  fun actionDeferred(body: (state: S, newState: S, payload: P) -> Completable) {
-    if (actionBodiesDeferred == null) actionBodiesDeferred = arrayListOf()
-    actionBodiesDeferred!!.add(body)
-  }
-
-  fun actionWithEventDeferred(body: (state: S, newState: S, payload: P) -> Single<E>) {
-    if (actionBodiesWithEventDeferred == null) actionBodiesWithEventDeferred = arrayListOf()
-    actionBodiesWithEventDeferred!!.add(body)
   }
 }
 
