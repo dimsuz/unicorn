@@ -1,6 +1,5 @@
 package ru.dimsuz.unicorn.reactivex
 
-import io.reactivex.Completable
 import io.reactivex.Observable
 import kotlin.reflect.KClass
 
@@ -10,20 +9,17 @@ annotation class StateMachineDsl
 @StateMachineDsl
 class MachineDsl<S : Any, E : Any> {
   var initial: Pair<S, (() -> Unit)?>? = null
+  @PublishedApi
   internal val transitions: MutableList<TransitionDsl<S, Any, E>> = arrayListOf()
 
-  fun <P : Any> onEach(eventPayloads: Observable<P>, init: TransitionDsl<S, P, E>.() -> Unit) {
-    val transitionDsl =
-      TransitionDsl<S, P, E>(eventPayloads)
-    transitionDsl.init()
+  inline fun <P : Any> onEach(eventPayloads: Observable<P>, init: TransitionDsl<S, P, E>.() -> Unit) {
+    val transitionDsl = TransitionDsl<S, P, E>(eventPayloads).apply(init)
     @Suppress("UNCHECKED_CAST") // we know the types here, enforced by dsl
     transitions.add(transitionDsl as TransitionDsl<S, Any, E>)
   }
 
-  fun <EE : E> on(eventSelector: KClass<out EE>, init: TransitionDsl<S, EE, E>.() -> Unit) {
-    val transitionDsl =
-      TransitionDsl<S, EE, E>(eventSelector)
-    transitionDsl.init()
+  inline fun <EE : E> on(eventSelector: KClass<out EE>, init: TransitionDsl<S, EE, E>.() -> Unit) {
+    val transitionDsl = TransitionDsl<S, EE, E>(eventSelector).apply(init)
     @Suppress("UNCHECKED_CAST") // we know the types here, enforced by dsl
     transitions.add(transitionDsl as TransitionDsl<S, Any, E>)
   }
