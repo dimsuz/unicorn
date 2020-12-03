@@ -23,7 +23,7 @@ class MachineDslTest : ShouldSpec({
       }
       val observer =
         createSubscribedTestObserver(m.transitionStream)
-      observer.assertValue(3 to null)
+      observer.assertValue(TransitionResult(3, null))
     }
   }
 
@@ -36,7 +36,7 @@ class MachineDslTest : ShouldSpec({
         }
       }
       val observer =
-        createSubscribedTestObserver(m.transitionStream.map { it.first })
+        createSubscribedTestObserver(m.transitionStream.map { it.state })
       observer.assertValues(listOf(3), listOf(3, 10), listOf(3, 10, 20), listOf(3, 10, 20, 30))
     }
 
@@ -52,7 +52,7 @@ class MachineDslTest : ShouldSpec({
         }
       }
       val observer =
-        createSubscribedTestObserver(m.transitionStream.map { it.first })
+        createSubscribedTestObserver(m.transitionStream.map { it.state })
 
       // Act
       m.send(Event.E2("he"))
@@ -79,7 +79,7 @@ class MachineDslTest : ShouldSpec({
         }
       }
       val observer =
-        createSubscribedTestObserver(m.transitionStream.map { it.first })
+        createSubscribedTestObserver(m.transitionStream.map { it.state })
       observer.assertValues(listOf(3), listOf(3))
     }
 
@@ -92,7 +92,7 @@ class MachineDslTest : ShouldSpec({
         }
       }
       val observer =
-        createSubscribedTestObserver(m.transitionStream.map { it.first })
+        createSubscribedTestObserver(m.transitionStream.map { it.state })
 
       m.send(Event.E1(24))
 
@@ -112,7 +112,7 @@ class MachineDslTest : ShouldSpec({
       }
 
       val observer =
-        createSubscribedTestObserver(m.transitionStream.map { it.first })
+        createSubscribedTestObserver(m.transitionStream.map { it.state })
       m.send(Event.E1(88))
       streamedSource.onNext("1")
       m.send(Event.E1(99))
@@ -147,7 +147,7 @@ class MachineDslTest : ShouldSpec({
       }
 
       val observer =
-        createSubscribedTestObserver(m.transitionStream.map { it.first })
+        createSubscribedTestObserver(m.transitionStream.map { it.state })
       observer.awaitTerminalEvent()
 
       firstBlockCallCount shouldBe 3
@@ -163,7 +163,7 @@ class MachineDslTest : ShouldSpec({
         }
       }
 
-      createSubscribedTestObserver(m.transitionStream.map { it.first })
+      createSubscribedTestObserver(m.transitionStream.map { it.state })
 
       count.get() shouldBe 1
     }

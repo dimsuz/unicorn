@@ -2,7 +2,6 @@ package ru.dimsuz.unicorn.reactivex
 
 import io.reactivex.Completable
 import io.reactivex.Observable
-import io.reactivex.Single
 import kotlin.reflect.KClass
 
 @DslMarker
@@ -67,4 +66,7 @@ fun <S : Any, E : Any> machine(init: MachineDsl<S, E>.() -> Unit): Machine<S, E>
   )
 }
 
-typealias TransitionResult<S> = Pair<S, Completable?>
+data class TransitionResult<S : Any>(
+  val state: S,
+  val actions: Completable?
+)
