@@ -85,3 +85,18 @@ private fun <S : Any> TransitionConfig<S, *>.reduceActions(
     }
     ?.let { Completable.concat(it) }
 }
+
+fun <S : Any, E : Any> machine(init: MachineDsl<S, E>.() -> Unit): Machine<S, E> {
+  val machineDsl = MachineDsl<S, E>()
+  machineDsl.init()
+  return buildMachine(
+    MachineConfig.create(
+      machineDsl
+    )
+  )
+}
+
+data class TransitionResult<S : Any>(
+  val state: S,
+  val actions: Completable?
+)

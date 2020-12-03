@@ -55,18 +55,3 @@ class TransitionDsl<S : Any, P : Any, E : Any> private constructor(
     actionBodiesWithEvent!!.add(body)
   }
 }
-
-fun <S : Any, E : Any> machine(init: MachineDsl<S, E>.() -> Unit): Machine<S, E> {
-  val machineDsl = MachineDsl<S, E>()
-  machineDsl.init()
-  return buildMachine(
-    MachineConfig.create(
-      machineDsl
-    )
-  )
-}
-
-data class TransitionResult<S : Any>(
-  val state: S,
-  val actions: Completable?
-)
