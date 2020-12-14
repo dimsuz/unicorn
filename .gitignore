@@ -8,6 +8,7 @@ gen/
 .externalNativeBuild
 /build
 /unicorn-rxjava2/build
+/unicorn-lint/build
 /buildSrc/build
 /captures
 /.idea/*
