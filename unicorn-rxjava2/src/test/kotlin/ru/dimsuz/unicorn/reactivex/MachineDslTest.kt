@@ -4,6 +4,15 @@ import io.kotest.assertions.throwables.shouldThrowMessage
 import io.kotest.core.spec.style.ShouldSpec
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.shouldBe
+import io.kotest.property.Arb
+import io.kotest.property.Exhaustive
+import io.kotest.property.arbitrary.arbitrary
+import io.kotest.property.arbitrary.int
+import io.kotest.property.arbitrary.list
+import io.kotest.property.arbitrary.next
+import io.kotest.property.arbitrary.string
+import io.kotest.property.checkAll
+import io.kotest.property.exhaustive.exhaustive
 import io.reactivex.Observable
 import io.reactivex.observers.TestObserver
 import io.reactivex.subjects.PublishSubject
@@ -29,45 +38,50 @@ class MachineDslTest : ShouldSpec({
 
   context("transitions") {
     should("perform transitions given streamed payloads") {
-      val m = machine<List<Int>, Unit> {
-        initial = listOf(3) to null
-        onEach(Observable.just(10, 20, 30)) {
-          transitionTo { state, payload -> state.plus(payload) }
+      checkAll { initialValue: List<Int>, payloads: List<Int> ->
+        val m = machine<List<Int>, Unit> {
+          initial = initialValue to null
+          onEach(Observable.fromIterable(payloads)) {
+            transitionTo { state, payload -> state.plus(payload) }
+          }
         }
+        val observer = createSubscribedTestObserver(m.transitionStream.map { it.state })
+        val expectedStates = mutableListOf(initialValue)
+        payloads.mapTo(expectedStates) { payload -> expectedStates.last() + payload }
+        observer.assertValueSequence(expectedStates)
       }
-      val observer =
-        createSubscribedTestObserver(m.transitionStream.map { it.state })
-      observer.assertValues(listOf(3), listOf(3, 10), listOf(3, 10, 20), listOf(3, 10, 20, 30))
     }
 
     should("perform transitions given discrete events") {
-      // Arrange
-      val m = machine<Pair<List<Int>, String>, Event> {
-        initial = (listOf(3) to "") to null
-        on(Event.E1::class) {
-          transitionTo { state, event -> state.copy(first = state.first.plus(event.value)) }
+      checkAll(Arb.list(Arb.events(), 0..20)) { events: List<Event> ->
+        // Arrange
+        val m = machine<Pair<List<Int>, String>, Event> {
+          initial = (listOf(3) to "") to null
+          on(Event.E1::class) {
+            transitionTo { state, event -> state.copy(first = state.first.plus(event.value)) }
+          }
+          on(Event.E2::class) {
+            transitionTo { state, event -> state.copy(second = state.second.plus(event.value)) }
+          }
         }
-        on(Event.E2::class) {
-          transitionTo { state, event -> state.copy(second = state.second.plus(event.value)) }
+        val observer =
+          createSubscribedTestObserver(m.transitionStream.map { it.state })
+
+        // Act
+        events.forEach { m.send(it) }
+
+        val expectedStates = mutableListOf(listOf(3) to "")
+        events.mapTo(expectedStates) { event ->
+          val state = expectedStates.last()
+          when (event) {
+            is Event.E1 -> state.copy(first = state.first + event.value)
+            is Event.E2 -> state.copy(second = state.second + event.value)
+          }
         }
+
+        // Assert
+        observer.assertValueSequence(expectedStates)
       }
-      val observer =
-        createSubscribedTestObserver(m.transitionStream.map { it.state })
-
-      // Act
-      m.send(Event.E2("he"))
-      m.send(Event.E1(10))
-      m.send(Event.E2("llo"))
-      m.send(Event.E1(20))
-
-      // Assert
-      observer.assertValues(
-        listOf(3) to "",
-        listOf(3) to "he",
-        listOf(3, 10) to "he",
-        listOf(3, 10) to "hello",
-        listOf(3, 10, 20) to "hello"
-      )
     }
 
     should("not throw errors when no transitions in onEach-clause") {
@@ -100,31 +114,38 @@ class MachineDslTest : ShouldSpec({
     }
 
     should("process both on and onEach sources when they are mixed") {
-      val streamedSource = PublishSubject.create<String>()
-      val m = machine<List<Int>, Event> {
-        initial = listOf(3) to null
-        on(Event.E1::class) {
-          transitionTo { state, event -> state.plus(event.value) }
+      checkAll(Arb.list(Arb.events(), range = 0..20)) { events: List<Event> ->
+        val streamedSource = PublishSubject.create<String>()
+        val m = machine<List<Int>, Event> {
+          initial = listOf(3) to null
+          on(Event.E1::class) {
+            transitionTo { state, event -> state.plus(event.value) }
+          }
+          onEach(streamedSource) {
+            transitionTo { state, payload -> state.plus(payload.length * 10) }
+          }
         }
-        onEach(streamedSource) {
-          transitionTo { state, payload -> state.plus(payload.toInt() * 10) }
+
+        val observer =
+          createSubscribedTestObserver(m.transitionStream.map { it.state })
+
+        events.forEach { event ->
+          when (event) {
+            is Event.E1 -> m.send(event)
+            is Event.E2 -> streamedSource.onNext(event.value)
+          }
         }
+
+        val expectedStates = mutableListOf(listOf(3))
+        events.mapTo(expectedStates) { event ->
+          val state = expectedStates.last()
+          when (event) {
+            is Event.E1 -> state + event.value
+            is Event.E2 -> state + event.value.length * 10
+          }
+        }
+        observer.assertValueSequence(expectedStates)
       }
-
-      val observer =
-        createSubscribedTestObserver(m.transitionStream.map { it.state })
-      m.send(Event.E1(88))
-      streamedSource.onNext("1")
-      m.send(Event.E1(99))
-      streamedSource.onNext("2")
-
-      observer.assertValues(
-        listOf(3),
-        listOf(3, 88),
-        listOf(3, 88, 10),
-        listOf(3, 88, 10, 99),
-        listOf(3, 88, 10, 99, 20)
-      )
     }
 
     should("call transition block only for specific streaming payloads") {
@@ -433,3 +454,14 @@ private sealed class Event {
 }
 
 typealias ActionArgs<S, P> = Triple<S, S, P>
+
+private fun Arb.Companion.events(): Arb<Event> {
+  return arbitrary { rs ->
+    val useFirst = rs.random.nextBoolean()
+    if (useFirst) {
+      Event.E1(Arb.int().next(rs))
+    } else {
+      Event.E2(Arb.string().next(rs))
+    }
+  }
+}
