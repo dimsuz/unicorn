@@ -1,6 +1,5 @@
 package ru.dimsuz.unicorn.reactivex
 
-import io.reactivex.Maybe
 import io.reactivex.Observable
 import kotlin.reflect.KClass
 
@@ -24,7 +23,7 @@ typealias InitialStateConfig<S> = Pair<S, (() -> Unit)?>
 
 internal data class TransitionConfig<S : Any, E : Any>(
   val eventConfig: EventConfig,
-  val actions: List<(S, S, Any) -> Maybe<E>>?,
+  val actions: List<(S, S, Any) -> E?>?,
   val reducer: (S, Any) -> S
 ) {
   sealed class EventConfig {
@@ -56,22 +55,22 @@ private fun <S : Any, P : Any, E : Any> TransitionDsl<S, P, E>.toTransitionConfi
   )
 }
 
-private fun <S : Any, P : Any, E : Any> TransitionDsl<S, P, E>.buildActions(): List<(S, S, Any) -> Maybe<E>>? {
-  val actions = mutableListOf<(S, S, Any) -> Maybe<E>>()
+private fun <S : Any, P : Any, E : Any> TransitionDsl<S, P, E>.buildActions(): List<(S, S, Any) -> E?>? {
+  val actions = mutableListOf<(S, S, Any) -> E?>()
   return when {
     actionBodies != null -> actionBodies!!.mapTo(actions) { body ->
       { ps: S, ns: S, p: Any ->
         @Suppress("UNCHECKED_CAST") // we know the type here
-        Maybe.fromAction { body(ps, ns, p as P) }
+        body(ps, ns, p as P)
+        null
       }
     }
     actionBodiesWithEvent != null -> actionBodiesWithEvent!!.mapTo(actions) { body ->
       { ps: S, ns: S, p: Any ->
         @Suppress("UNCHECKED_CAST") // we know the type here
-        Maybe.fromCallable { body(ps, ns, p as P) }
+        body(ps, ns, p as P)
       }
     }
-    // TODO configure other types of action bodies
     else -> null
   }
 }

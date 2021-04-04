@@ -1,6 +1,5 @@
 package ru.dimsuz.unicorn.reactivex
 
-import io.reactivex.Completable
 import io.reactivex.Observable
 import io.reactivex.subjects.PublishSubject
 import io.reactivex.subjects.Subject
@@ -67,7 +66,7 @@ private fun <S : Any> buildTransitionStream(
 private fun <S : Any> buildInitialState(config: InitialStateConfig<S>): TransitionResult<S> {
   return TransitionResult(
     state = config.first,
-    actions = config.second?.let { Completable.fromAction(it) }
+    actions = config.second
   )
 }
 
@@ -76,14 +75,17 @@ private fun <S : Any> TransitionConfig<S, *>.reduceActions(
   newState: S,
   payload: Any,
   discreteEventSubject: Subject<Any>
-): Completable? {
-  return actions
-    ?.map { body ->
-      body(previousState, newState, payload)
-        .doOnSuccess { discreteEventSubject.onNext(it) }
-        .ignoreElement()
+): (() -> Unit)? {
+  return actions?.let { list ->
+    {
+      list.forEach { body ->
+        val event = body(previousState, newState, payload)
+        if (event != null) {
+          discreteEventSubject.onNext(event)
+        }
+      }
     }
-    ?.let { Completable.concat(it) }
+  }
 }
 
 fun <S : Any, E : Any> machine(init: MachineDsl<S, E>.() -> Unit): Machine<S, E> {
@@ -95,8 +97,3 @@ fun <S : Any, E : Any> machine(init: MachineDsl<S, E>.() -> Unit): Machine<S, E>
     )
   )
 }
-
-data class TransitionResult<S : Any>(
-  val state: S,
-  val actions: Completable?
-)

@@ -176,7 +176,7 @@ class MachineDslTest : ShouldSpec({
         initial = 3 to { executed = true }
       }
       m.transitionStream
-        .subscribe { (_, actions) -> actions?.blockingAwait() }
+        .subscribe { (_, actions) -> actions?.invoke() }
 
       executed shouldBe true
     }
@@ -192,7 +192,7 @@ class MachineDslTest : ShouldSpec({
       }
 
       m.transitionStream
-        .subscribe { (_, actions) -> actions?.blockingAwait() }
+        .subscribe { (_, actions) -> actions?.invoke() }
 
       count shouldBe 4
     }
@@ -216,7 +216,7 @@ class MachineDslTest : ShouldSpec({
       }
 
       m.transitionStream
-        .subscribe { (_, actions) -> actions?.blockingAwait() }
+        .subscribe { (_, actions) -> actions?.invoke() }
 
       arguments shouldContainExactly listOf(
         ActionArgs(listOf(3), listOf(3, 1), 1),
@@ -264,7 +264,7 @@ class MachineDslTest : ShouldSpec({
       }
 
       m.transitionStream
-        .subscribe { (_, actions) -> actions?.blockingAwait() }
+        .subscribe { (_, actions) -> actions?.invoke() }
 
       m.send(Event.E2("33"))
       m.send(Event.E1(88))
@@ -296,7 +296,7 @@ class MachineDslTest : ShouldSpec({
       }
 
       m.transitionStream
-        .subscribe { (_, actions) -> actions?.blockingAwait() }
+        .subscribe { (_, actions) -> actions?.invoke() }
 
       markers shouldContainExactly listOf(
         "action1",
@@ -321,7 +321,7 @@ class MachineDslTest : ShouldSpec({
       }
 
       m.transitionStream
-        .subscribe { (_, actions) -> actions?.blockingAwait() }
+        .subscribe { (_, actions) -> actions?.invoke() }
 
       count shouldBe 3
     }
@@ -339,7 +339,7 @@ class MachineDslTest : ShouldSpec({
       }
 
       m.transitionStream
-        .subscribe { (_, actions) -> actions?.blockingAwait() }
+        .subscribe { (_, actions) -> actions?.invoke() }
       m.send(Event.E1(1))
       m.send(Event.E1(2))
       m.send(Event.E1(3))
@@ -366,7 +366,7 @@ class MachineDslTest : ShouldSpec({
 
       val states = mutableListOf<Int>()
       m.transitionStream
-        .subscribe { (s, actions) -> actions?.blockingAwait(); states.add(s) }
+        .subscribe { (s, actions) -> actions?.invoke(); states.add(s) }
 
       states shouldContainExactly listOf(
         0, // initial
@@ -396,7 +396,7 @@ class MachineDslTest : ShouldSpec({
 
       val states = mutableListOf<Int>()
       m.transitionStream
-        .subscribe { (s, actions) -> actions?.blockingAwait(); states.add(s) }
+        .subscribe { (s, actions) -> actions?.invoke(); states.add(s) }
 
       m.send(Event.E2("he"))
       m.send(Event.E2("llo"))
