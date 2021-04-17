@@ -5,14 +5,12 @@ import io.kotest.core.spec.style.ShouldSpec
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.shouldBe
 import io.kotest.property.Arb
-import io.kotest.property.Exhaustive
 import io.kotest.property.arbitrary.arbitrary
 import io.kotest.property.arbitrary.int
 import io.kotest.property.arbitrary.list
 import io.kotest.property.arbitrary.next
 import io.kotest.property.arbitrary.string
 import io.kotest.property.checkAll
-import io.kotest.property.exhaustive.exhaustive
 import io.reactivex.Observable
 import io.reactivex.observers.TestObserver
 import io.reactivex.subjects.PublishSubject
