@@ -11,9 +11,12 @@ import io.kotest.property.arbitrary.list
 import io.kotest.property.arbitrary.next
 import io.kotest.property.arbitrary.string
 import io.kotest.property.checkAll
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onStart
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.time.ExperimentalTime
 
 @ExperimentalTime
@@ -126,6 +129,94 @@ class MachineDslTest : ShouldSpec({
         expectItem() shouldBe listOf(3)
       }
     }
+
+    should("process both on and onEach sources when they are mixed") {
+      checkAll(Arb.list(Arb.events(), range = 0..20)) { events: List<Event> ->
+        // Arrange
+        val streamedSource = MutableSharedFlow<String>()
+        val m = machine<List<Int>, Event> {
+          initial = listOf(3) to null
+          on(Event.E1::class) {
+            transitionTo { state, event -> state.plus(event.value) }
+          }
+          onEach(streamedSource) {
+            transitionTo { state, payload -> state.plus(payload.length * 10) }
+          }
+        }
+
+        // Act
+        events.forEach { event ->
+          when (event) {
+            is Event.E1 -> m.send(event)
+            is Event.E2 -> streamedSource.emit(event.value)
+          }
+        }
+
+        // Assert
+        val expectedStates = mutableListOf(listOf(3))
+        events.mapTo(expectedStates) { event ->
+          val state = expectedStates.last()
+          when (event) {
+            is Event.E1 -> state + event.value
+            is Event.E2 -> state + event.value.length * 10
+          }
+        }
+        m.transitionStream.map { it.state }.test {
+          expectedStates.forEach { expectedState ->
+            expectItem() shouldBe expectedState
+          }
+          expectComplete()
+        }
+      }
+    }
+
+    should("call transition block only for specific streaming payloads") {
+      var firstBlockCallCount = 0
+      var secondBlockCallCount = 0
+      val m = machine<List<Int>, Unit> {
+        initial = listOf(3) to null
+        onEach(flowOf(10, 20, 30)) {
+          transitionTo { state, _ ->
+            firstBlockCallCount += 1
+            state
+          }
+        }
+        onEach(flowOf("a", "b", "c")) {
+          transitionTo { state, _ ->
+            secondBlockCallCount += 1
+            state
+          }
+        }
+      }
+
+      m.transitionStream.map { it.state }.test {
+        repeat(7) { expectItem() } // initial + 6 emissions
+        expectComplete()
+        firstBlockCallCount shouldBe 3
+        secondBlockCallCount shouldBe 3
+      }
+    }
+
+    should("subscribe to streamed payloads only once") {
+      val count = AtomicInteger(0)
+      val m = machine<List<Int>, Unit> {
+        initial = listOf(3) to null
+        onEach(flowOf(10, 20, 30).onStart { count.incrementAndGet() }) {
+          transitionTo { state, _ -> state }
+        }
+      }
+
+      m.transitionStream.map { it.state }.test {
+        repeat(4) { expectItem() } // initial + 3 emissions
+        expectComplete()
+      }
+
+      count.get() shouldBe 1
+    }
+  }
+
+  context("actions") {
+    // TODO
   }
 })
 
