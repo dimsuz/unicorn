@@ -19,7 +19,7 @@ internal data class MachineConfig<S : Any, E : Any>(
   }
 }
 
-typealias InitialStateConfig<S> = Pair<S, (() -> Unit)?>
+typealias InitialStateConfig<S> = Pair<S, (suspend () -> Unit)?>
 
 internal data class TransitionConfig<S : Any, E : Any>(
   val eventConfig: EventConfig,
@@ -27,7 +27,7 @@ internal data class TransitionConfig<S : Any, E : Any>(
   val reducer: (S, Any) -> S
 ) {
   sealed class EventConfig {
-    data class Streamed(val payloadSource: Flow<*>) : EventConfig()
+    data class Streamed(val payloadSource: Flow<Any>) : EventConfig()
     data class Discrete(val eventSelector: KClass<*>) : EventConfig()
   }
 }

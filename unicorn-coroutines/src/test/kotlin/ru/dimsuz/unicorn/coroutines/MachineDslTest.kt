@@ -3,6 +3,7 @@ package ru.dimsuz.unicorn.coroutines
 import app.cash.turbine.test
 import io.kotest.assertions.throwables.shouldThrowMessage
 import io.kotest.core.spec.style.ShouldSpec
+import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.shouldBe
 import io.kotest.property.Arb
 import io.kotest.property.arbitrary.arbitrary
@@ -77,23 +78,22 @@ class MachineDslTest : ShouldSpec({
           }
         }
 
-        // Act
-        events.forEach { m.send(it) }
-
-        // Assert
-        val expectedStates = mutableListOf(listOf(3) to "")
-        events.mapTo(expectedStates) { event ->
-          val state = expectedStates.last()
-          when (event) {
-            is Event.E1 -> state.copy(first = state.first + event.value)
-            is Event.E2 -> state.copy(second = state.second + event.value)
-          }
-        }
         m.transitionStream.map { it.state }.test {
+          // Act
+          events.forEach { m.send(it) }
+
+          // Assert
+          val expectedStates = mutableListOf(listOf(3) to "")
+          events.mapTo(expectedStates) { event ->
+            val state = expectedStates.last()
+            when (event) {
+              is Event.E1 -> state.copy(first = state.first + event.value)
+              is Event.E2 -> state.copy(second = state.second + event.value)
+            }
+          }
           expectedStates.forEach { expectedState ->
             expectItem() shouldBe expectedState
           }
-          expectComplete()
         }
       }
     }
@@ -110,6 +110,7 @@ class MachineDslTest : ShouldSpec({
       m.transitionStream.map { it.state }.test {
         expectItem() shouldBe listOf(3)
         expectItem() shouldBe listOf(3)
+        expectComplete()
       }
     }
 
@@ -122,9 +123,8 @@ class MachineDslTest : ShouldSpec({
         }
       }
 
-      m.send(Event.E1(24))
-
       m.transitionStream.map { it.state }.test {
+        m.send(Event.E1(24))
         expectItem() shouldBe listOf(3)
         expectItem() shouldBe listOf(3)
       }
@@ -144,28 +144,27 @@ class MachineDslTest : ShouldSpec({
           }
         }
 
-        // Act
-        events.forEach { event ->
-          when (event) {
-            is Event.E1 -> m.send(event)
-            is Event.E2 -> streamedSource.emit(event.value)
-          }
-        }
-
-        // Assert
-        val expectedStates = mutableListOf(listOf(3))
-        events.mapTo(expectedStates) { event ->
-          val state = expectedStates.last()
-          when (event) {
-            is Event.E1 -> state + event.value
-            is Event.E2 -> state + event.value.length * 10
-          }
-        }
         m.transitionStream.map { it.state }.test {
+          // Act
+          events.forEach { event ->
+            when (event) {
+              is Event.E1 -> m.send(event)
+              is Event.E2 -> streamedSource.emit(event.value)
+            }
+          }
+
+          // Assert
+          val expectedStates = mutableListOf(listOf(3))
+          events.mapTo(expectedStates) { event ->
+            val state = expectedStates.last()
+            when (event) {
+              is Event.E1 -> state + event.value
+              is Event.E2 -> state + event.value.length * 10
+            }
+          }
           expectedStates.forEach { expectedState ->
             expectItem() shouldBe expectedState
           }
-          expectComplete()
         }
       }
     }
@@ -215,8 +214,145 @@ class MachineDslTest : ShouldSpec({
     }
   }
 
-  context("actions") {
-    // TODO
+  context("f:actions") {
+    should("execute initial action if specified") {
+      var executed = false
+      val m = machine<Int, Unit> {
+        initial = 3 to { executed = true }
+      }
+
+      m.transitionStream.test {
+        // Act
+        val (_, actions) = expectItem()
+        actions?.invoke()
+        expectComplete()
+
+        // Assert
+        executed shouldBe true
+      }
+    }
+
+    should("execute action in onEach-clause on each emission") {
+      var count = 0
+      val m = machine<List<Int>, Unit> {
+        initial = listOf(3) to null
+        onEach(flowOf(1, 2, 3, 4)) {
+          transitionTo { state, _ -> state }
+          action { _, _, _ -> count += 1 }
+        }
+      }
+
+      m.transitionStream.test {
+        // Act
+        repeat(5) {
+          val (_, actions) = expectItem()
+          actions?.invoke()
+        }
+        expectComplete()
+
+        // Assert
+        count shouldBe 4
+      }
+    }
+
+    should("execute action in onEach-clause with correct arguments") {
+      val arguments: MutableList<ActionArgs<List<Int>, Int>> = arrayListOf()
+      val m = machine<List<Int>, Unit> {
+        initial = listOf(3) to null
+        onEach(flowOf(1, 2, 3)) {
+          transitionTo { state, payload -> state.plus(payload) }
+          action { prevState, newState, payload ->
+            arguments.add(
+              ActionArgs(
+                prevState,
+                newState,
+                payload
+              )
+            )
+          }
+        }
+      }
+
+      m.transitionStream.test {
+        // Act
+        repeat(4) {
+          val (_, actions) = expectItem()
+          actions?.invoke()
+        }
+        expectComplete()
+
+        // Assert
+        arguments shouldContainExactly listOf(
+          ActionArgs(listOf(3), listOf(3, 1), 1),
+          ActionArgs(
+            listOf(3, 1),
+            listOf(3, 1, 2),
+            2
+          ),
+          ActionArgs(
+            listOf(3, 1, 2),
+            listOf(3, 1, 2, 3),
+            3
+          )
+        )
+      }
+    }
+
+    should("execute action in on-clause with correct arguments") {
+      val arguments: MutableList<ActionArgs<List<Int>, Event>> = arrayListOf()
+      val m = machine<List<Int>, Event> {
+        initial = listOf(3) to null
+        on(Event.E1::class) {
+          transitionTo { state, event -> state.plus(event.value) }
+          action { prevState, newState, event ->
+            arguments.add(
+              ActionArgs(
+                prevState,
+                newState,
+                event
+              )
+            )
+          }
+        }
+        on(Event.E2::class) {
+          transitionTo { state, event -> state.plus(event.value.toInt() * 10) }
+          action { prevState, newState, event ->
+            arguments.add(
+              ActionArgs(
+                prevState,
+                newState,
+                event
+              )
+            )
+          }
+        }
+      }
+
+      m.transitionStream.test {
+        m.send(Event.E2("33"))
+        m.send(Event.E1(88))
+
+        // Act
+        repeat(3) {
+          val (_, actions) = expectItem()
+          actions?.invoke()
+        }
+
+        // Assert
+        arguments shouldContainExactly listOf(
+          ActionArgs(
+            listOf(3),
+            listOf(3, 330),
+            Event.E2("33")
+          ),
+          ActionArgs(
+            listOf(3, 330),
+            listOf(3, 330, 88),
+            Event.E1(88)
+          )
+        )
+      }
+    }
   }
 })
 
@@ -224,6 +360,8 @@ private sealed class Event {
   data class E1(val value: Int) : Event()
   data class E2(val value: String) : Event()
 }
+
+typealias ActionArgs<S, P> = Triple<S, S, P>
 
 private fun Arb.Companion.events(): Arb<Event> {
   return arbitrary { rs ->

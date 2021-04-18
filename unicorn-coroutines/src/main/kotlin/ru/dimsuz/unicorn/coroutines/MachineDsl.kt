@@ -8,7 +8,7 @@ annotation class StateMachineDsl
 
 @StateMachineDsl
 class MachineDsl<S : Any, E : Any> {
-  var initial: Pair<S, (() -> Unit)?>? = null
+  var initial: Pair<S, (suspend () -> Unit)?>? = null
   @PublishedApi
   internal val transitions: MutableList<TransitionDsl<S, Any, E>> = arrayListOf()
 

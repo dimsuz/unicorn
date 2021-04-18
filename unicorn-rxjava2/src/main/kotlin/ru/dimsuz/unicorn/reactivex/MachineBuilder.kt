@@ -47,20 +47,19 @@ private fun <S : Any> buildTransitionStream(
     .merge(discreteEventSources)
     .mergeWith(Observable.merge(streamedEventSources))
     .scan(
-      buildInitialState(machineConfig.initial),
-      { stateBundle: TransitionResult<S>, payloadBundle: Pair<Any, TransitionConfig<S, *>> ->
-        val payload = payloadBundle.first
-        val previousState = stateBundle.state
-        val nextState = payloadBundle.second.reducer(previousState, payload)
-        val nextAction = payloadBundle.second.reduceActions(
-          previousState,
-          nextState,
-          payload,
-          discreteEventSubject
-        )
-        TransitionResult(nextState, nextAction)
-      }
-    )
+      buildInitialState(machineConfig.initial)
+    ) { stateBundle: TransitionResult<S>, payloadBundle: Pair<Any, TransitionConfig<S, *>> ->
+      val payload = payloadBundle.first
+      val previousState = stateBundle.state
+      val nextState = payloadBundle.second.reducer(previousState, payload)
+      val nextAction = payloadBundle.second.reduceActions(
+        previousState,
+        nextState,
+        payload,
+        discreteEventSubject
+      )
+      TransitionResult(nextState, nextAction)
+    }
 }
 
 private fun <S : Any> buildInitialState(config: InitialStateConfig<S>): TransitionResult<S> {
