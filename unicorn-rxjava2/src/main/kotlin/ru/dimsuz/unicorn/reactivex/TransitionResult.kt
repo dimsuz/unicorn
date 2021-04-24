@@ -1,7 +1,10 @@
 package ru.dimsuz.unicorn.reactivex
 
-data class TransitionResult<S : Any> internal constructor(
+import io.reactivex.Completable
+import io.reactivex.Single
+
+internal data class TransitionResult<S : Any> internal constructor(
   val state: S,
-  val actions: (() -> Unit)?,
-  internal val internalActions: (() -> List<Any>)? = null
+  val actions: Completable?,
+  val internalActions: Single<List<Any>>?,
 )

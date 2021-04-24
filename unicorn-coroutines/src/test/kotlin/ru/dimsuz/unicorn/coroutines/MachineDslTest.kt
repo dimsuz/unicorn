@@ -1,6 +1,7 @@
 package ru.dimsuz.unicorn.coroutines
 
 import app.cash.turbine.test
+import io.kotest.assertions.fail
 import io.kotest.assertions.throwables.shouldThrowMessage
 import io.kotest.core.spec.style.ShouldSpec
 import io.kotest.matchers.collections.shouldContainExactly
@@ -494,33 +495,12 @@ class MachineDslTest : ShouldSpec({
       }
     }
 
-    should("action with event is launched internally and doesn't require invoke") {
-      val m = machine<Int, Event> {
-        initial = 0 to null
+    should("run actions on specified scheduler") {
+      fail("todo")
+    }
 
-        onEach(flowOf(10, 20)) {
-          actionWithEvent { _, _, payload ->
-            Event.E1(payload)
-          }
-        }
-
-        on(Event.E1::class) {
-          transitionTo { state, payload ->
-            state + payload.value
-          }
-        }
-      }
-
-      m.transitionStream.test {
-        var lastState: Int? = null
-        repeat(5) {
-          val (s, _) = expectItem()
-          lastState = s
-          // notice: no actions.invoke()!
-        }
-
-        lastState shouldBe 30
-      }
+    should("run actions with event on specified scheduler") {
+      fail("todo")
     }
 
     // TODO error when 2 transitionTo blocks

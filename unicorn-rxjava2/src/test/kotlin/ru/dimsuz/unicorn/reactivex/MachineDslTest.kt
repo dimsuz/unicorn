@@ -1,5 +1,6 @@
 package ru.dimsuz.unicorn.reactivex
 
+import io.kotest.assertions.fail
 import io.kotest.assertions.throwables.shouldThrowMessage
 import io.kotest.core.spec.style.ShouldSpec
 import io.kotest.matchers.collections.shouldContainExactly
@@ -29,8 +30,8 @@ class MachineDslTest : ShouldSpec({
         initial = 3 to null
       }
       val observer =
-        createSubscribedTestObserver(m.transitionStream)
-      observer.assertValue(TransitionResult(3, null))
+        createSubscribedTestObserver(m.states)
+      observer.assertValue(3)
     }
   }
 
@@ -43,7 +44,7 @@ class MachineDslTest : ShouldSpec({
             transitionTo { state, payload -> state.plus(payload) }
           }
         }
-        val observer = createSubscribedTestObserver(m.transitionStream.map { it.state })
+        val observer = createSubscribedTestObserver(m.states)
         val expectedStates = mutableListOf(initialValue)
         payloads.mapTo(expectedStates) { payload -> expectedStates.last() + payload }
         observer.assertValueSequence(expectedStates)
@@ -63,7 +64,7 @@ class MachineDslTest : ShouldSpec({
           }
         }
         val observer =
-          createSubscribedTestObserver(m.transitionStream.map { it.state })
+          createSubscribedTestObserver(m.states)
 
         // Act
         events.forEach { m.send(it) }
@@ -91,7 +92,7 @@ class MachineDslTest : ShouldSpec({
         }
       }
       val observer =
-        createSubscribedTestObserver(m.transitionStream.map { it.state })
+        createSubscribedTestObserver(m.states)
       observer.assertValues(listOf(3), listOf(3))
     }
 
@@ -104,7 +105,7 @@ class MachineDslTest : ShouldSpec({
         }
       }
       val observer =
-        createSubscribedTestObserver(m.transitionStream.map { it.state })
+        createSubscribedTestObserver(m.states)
 
       m.send(Event.E1(24))
 
@@ -125,7 +126,7 @@ class MachineDslTest : ShouldSpec({
         }
 
         val observer =
-          createSubscribedTestObserver(m.transitionStream.map { it.state })
+          createSubscribedTestObserver(m.states)
 
         events.forEach { event ->
           when (event) {
@@ -166,7 +167,7 @@ class MachineDslTest : ShouldSpec({
       }
 
       val observer =
-        createSubscribedTestObserver(m.transitionStream.map { it.state })
+        createSubscribedTestObserver(m.states)
       observer.awaitTerminalEvent()
 
       firstBlockCallCount shouldBe 3
@@ -182,7 +183,7 @@ class MachineDslTest : ShouldSpec({
         }
       }
 
-      createSubscribedTestObserver(m.transitionStream.map { it.state })
+      createSubscribedTestObserver(m.states)
 
       count.get() shouldBe 1
     }
@@ -194,8 +195,8 @@ class MachineDslTest : ShouldSpec({
       val m = machine<Int, Unit> {
         initial = 3 to { executed = true }
       }
-      m.transitionStream
-        .subscribe { (_, actions) -> actions?.invoke() }
+      m.states
+        .subscribe()
 
       executed shouldBe true
     }
@@ -210,8 +211,8 @@ class MachineDslTest : ShouldSpec({
         }
       }
 
-      m.transitionStream
-        .subscribe { (_, actions) -> actions?.invoke() }
+      m.states
+        .subscribe()
 
       count shouldBe 4
     }
@@ -234,8 +235,8 @@ class MachineDslTest : ShouldSpec({
         }
       }
 
-      m.transitionStream
-        .subscribe { (_, actions) -> actions?.invoke() }
+      m.states
+        .subscribe()
 
       arguments shouldContainExactly listOf(
         ActionArgs(listOf(3), listOf(3, 1), 1),
@@ -282,8 +283,8 @@ class MachineDslTest : ShouldSpec({
         }
       }
 
-      m.transitionStream
-        .subscribe { (_, actions) -> actions?.invoke() }
+      m.states
+        .subscribe()
 
       m.send(Event.E2("33"))
       m.send(Event.E1(88))
@@ -314,8 +315,8 @@ class MachineDslTest : ShouldSpec({
         }
       }
 
-      m.transitionStream
-        .subscribe { (_, actions) -> actions?.invoke() }
+      m.states
+        .subscribe()
 
       markers shouldContainExactly listOf(
         "action1",
@@ -339,8 +340,8 @@ class MachineDslTest : ShouldSpec({
         }
       }
 
-      m.transitionStream
-        .subscribe { (_, actions) -> actions?.invoke() }
+      m.states
+        .subscribe()
 
       count shouldBe 3
     }
@@ -357,8 +358,8 @@ class MachineDslTest : ShouldSpec({
         }
       }
 
-      m.transitionStream
-        .subscribe { (_, actions) -> actions?.invoke() }
+      m.states
+        .subscribe()
       m.send(Event.E1(1))
       m.send(Event.E1(2))
       m.send(Event.E1(3))
@@ -384,8 +385,8 @@ class MachineDslTest : ShouldSpec({
       }
 
       val states = mutableListOf<Int>()
-      m.transitionStream
-        .subscribe { (s, actions) -> actions?.invoke(); states.add(s) }
+      m.states
+        .subscribe { s -> states.add(s) }
 
       states shouldContainExactly listOf(
         0, // initial
@@ -414,8 +415,8 @@ class MachineDslTest : ShouldSpec({
       }
 
       val states = mutableListOf<Int>()
-      m.transitionStream
-        .subscribe { (s, actions) -> actions?.invoke(); states.add(s) }
+      m.states
+        .subscribe { s -> states.add(s) }
 
       m.send(Event.E2("he"))
       m.send(Event.E2("llo"))
@@ -429,30 +430,12 @@ class MachineDslTest : ShouldSpec({
       )
     }
 
-    should("action with event is launched internally and doesn't require invoke") {
-      val m = machine<Int, Event> {
-        initial = 0 to null
+    should("run actions on specified scheduler") {
+      fail("todo")
+    }
 
-        onEach(Observable.just(10, 20)) {
-          actionWithEvent { _, _, payload ->
-            Event.E1(payload)
-          }
-        }
-
-        on(Event.E1::class) {
-          transitionTo { state, payload ->
-            state + payload.value
-          }
-        }
-      }
-
-      // notice: no actions.invoke()!
-      val observer = m.transitionStream
-        .map { it.state }
-        .subscribeWith(TestObserver())
-
-      observer.awaitCount(5)
-      observer.assertValueAt(4, 30)
+    should("run actions with event on specified scheduler") {
+      fail("todo")
     }
 
     // TODO error when 2 transitionTo blocks

@@ -1,20 +1,26 @@
 package ru.dimsuz.unicorn.reactivex
 
+import io.reactivex.Completable
 import io.reactivex.Observable
+import io.reactivex.Scheduler
+import io.reactivex.Single
 import io.reactivex.subjects.PublishSubject
 import io.reactivex.subjects.Subject
 import ru.dimsuz.unicorn.reactivex.TransitionConfig.EventConfig
 
 internal fun <S : Any, E : Any> buildMachine(
-  machineConfig: MachineConfig<S, *>
+  machineConfig: MachineConfig<S, *>,
+  actionsScheduler: Scheduler?,
 ): Machine<S, E> {
   return object : Machine<S, E> {
     private val discreteEventSubject = PublishSubject.create<Any>().toSerialized()
-    override val transitionStream =
+    override val states =
       buildTransitionStream(
         machineConfig,
-        discreteEventSubject
+        discreteEventSubject,
+        actionsScheduler
       )
+
     override fun send(e: E) {
       discreteEventSubject.onNext(e)
     }
@@ -23,8 +29,9 @@ internal fun <S : Any, E : Any> buildMachine(
 
 private fun <S : Any> buildTransitionStream(
   machineConfig: MachineConfig<S, *>,
-  discreteEventSubject: Subject<Any>
-): Observable<TransitionResult<S>> {
+  discreteEventSubject: Subject<Any>,
+  actionsScheduler: Scheduler?,
+): Observable<S> {
   val discreteEventSources = machineConfig.transitions
     .filter { it.eventConfig is EventConfig.Discrete }
     .map { transitionConfig ->
@@ -56,16 +63,32 @@ private fun <S : Any> buildTransitionStream(
       val nextInternalAction = payloadBundle.second.reduceInternalActions(previousState, nextState, payload)
       TransitionResult(nextState, nextAction, nextInternalAction)
     }
-    .doAfterNext { result ->
-      val events = result.internalActions?.invoke()
-      events?.forEach { discreteEventSubject.onNext(it) }
+    .flatMapSingle { result ->
+      val actions = when {
+        result.actions != null && result.internalActions != null -> {
+          result.actions.andThen(result.internalActions)
+            .doAfterSuccess { events -> events.forEach { discreteEventSubject.onNext(it) } }
+            .ignoreElement()
+        }
+        result.internalActions != null -> {
+          result.internalActions
+            .doAfterSuccess { events -> events.forEach { discreteEventSubject.onNext(it) } }
+            .ignoreElement()
+        }
+        result.actions != null -> result.actions
+        else -> Completable.complete()
+      }
+      actions
+        .let { if (actionsScheduler != null) it.subscribeOn(actionsScheduler) else it }
+        .andThen(Single.just(result.state))
     }
 }
 
 private fun <S : Any> buildInitialState(config: InitialStateConfig<S>): TransitionResult<S> {
   return TransitionResult(
     state = config.first,
-    actions = config.second
+    actions = config.second?.let { Completable.fromAction(it) },
+    internalActions = null
   )
 }
 
@@ -73,9 +96,9 @@ private fun <S : Any> TransitionConfig<S, *>.reduceActions(
   previousState: S,
   newState: S,
   payload: Any,
-): (() -> Unit)? {
+): Completable? {
   return actions?.let { list ->
-    {
+    Completable.fromAction {
       list.forEach { body ->
         body(previousState, newState, payload)
       }
@@ -87,9 +110,9 @@ private fun <S : Any> TransitionConfig<S, *>.reduceInternalActions(
   previousState: S,
   newState: S,
   payload: Any,
-): (() -> List<Any>)? {
+): Single<List<Any>>? {
   return actionsWithEvent?.let { list ->
-    {
+    Single.fromCallable {
       val events = mutableListOf<Any>()
       list.forEach { body ->
         val event = body(previousState, newState, payload)
@@ -102,12 +125,13 @@ private fun <S : Any> TransitionConfig<S, *>.reduceInternalActions(
   }
 }
 
-fun <S : Any, E : Any> machine(init: MachineDsl<S, E>.() -> Unit): Machine<S, E> {
+fun <S : Any, E : Any> machine(actionsScheduler: Scheduler? = null, init: MachineDsl<S, E>.() -> Unit): Machine<S, E> {
   val machineDsl = MachineDsl<S, E>()
   machineDsl.init()
   return buildMachine(
     MachineConfig.create(
       machineDsl
-    )
+    ),
+    actionsScheduler
   )
 }
