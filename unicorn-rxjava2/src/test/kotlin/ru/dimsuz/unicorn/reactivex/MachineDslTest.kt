@@ -429,6 +429,32 @@ class MachineDslTest : ShouldSpec({
       )
     }
 
+    should("action with event is launched internally and doesn't require invoke") {
+      val m = machine<Int, Event> {
+        initial = 0 to null
+
+        onEach(Observable.just(10, 20)) {
+          actionWithEvent { _, _, payload ->
+            Event.E1(payload)
+          }
+        }
+
+        on(Event.E1::class) {
+          transitionTo { state, payload ->
+            state + payload.value
+          }
+        }
+      }
+
+      // notice: no actions.invoke()!
+      val observer = m.transitionStream
+        .map { it.state }
+        .subscribeWith(TestObserver())
+
+      observer.awaitCount(5)
+      observer.assertValueAt(4, 30)
+    }
+
     // TODO error when 2 transitionTo blocks
     // TODO no error when no transitions and no actions
   }

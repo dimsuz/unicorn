@@ -23,7 +23,8 @@ typealias InitialStateConfig<S> = Pair<S, (() -> Unit)?>
 
 internal data class TransitionConfig<S : Any, E : Any>(
   val eventConfig: EventConfig,
-  val actions: List<(S, S, Any) -> E?>?,
+  val actions: List<(S, S, Any) -> Unit>?,
+  val actionsWithEvent: List<(S, S, Any) -> E?>?,
   val reducer: (S, Any) -> S
 ) {
   sealed class EventConfig {
@@ -51,26 +52,29 @@ private fun <S : Any, P : Any, E : Any> TransitionDsl<S, P, E>.toTransitionConfi
       else -> error("payloads and selector cannot both be null")
     },
     reducer = reducer,
-    actions = buildActions()
+    actions = buildActions(),
+    actionsWithEvent = buildActionsWithEvent()
   )
 }
 
-private fun <S : Any, P : Any, E : Any> TransitionDsl<S, P, E>.buildActions(): List<(S, S, Any) -> E?>? {
-  val actions = mutableListOf<(S, S, Any) -> E?>()
-  return when {
-    actionBodies != null -> actionBodies!!.mapTo(actions) { body ->
-      { ps: S, ns: S, p: Any ->
-        @Suppress("UNCHECKED_CAST") // we know the type here
-        body(ps, ns, p as P)
-        null
-      }
-    }
-    actionBodiesWithEvent != null -> actionBodiesWithEvent!!.mapTo(actions) { body ->
+private fun <S : Any, P : Any, E : Any> TransitionDsl<S, P, E>.buildActions(): List<(S, S, Any) -> Unit>? {
+  return actionBodies?.let {
+    it.map { body ->
       { ps: S, ns: S, p: Any ->
         @Suppress("UNCHECKED_CAST") // we know the type here
         body(ps, ns, p as P)
       }
     }
-    else -> null
+  }
+}
+
+private fun <S : Any, P : Any, E : Any> TransitionDsl<S, P, E>.buildActionsWithEvent(): List<(S, S, Any) -> E?>? {
+  return actionBodiesWithEvent?.let {
+    it.map { body ->
+      { ps: S, ns: S, p: Any ->
+        @Suppress("UNCHECKED_CAST") // we know the type here
+        body(ps, ns, p as P)
+      }
+    }
   }
 }

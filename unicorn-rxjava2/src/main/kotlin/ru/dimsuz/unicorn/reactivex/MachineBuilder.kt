@@ -52,13 +52,13 @@ private fun <S : Any> buildTransitionStream(
       val payload = payloadBundle.first
       val previousState = stateBundle.state
       val nextState = payloadBundle.second.reducer(previousState, payload)
-      val nextAction = payloadBundle.second.reduceActions(
-        previousState,
-        nextState,
-        payload,
-        discreteEventSubject
-      )
-      TransitionResult(nextState, nextAction)
+      val nextAction = payloadBundle.second.reduceActions(previousState, nextState, payload)
+      val nextInternalAction = payloadBundle.second.reduceInternalActions(previousState, nextState, payload)
+      TransitionResult(nextState, nextAction, nextInternalAction)
+    }
+    .doAfterNext { result ->
+      val events = result.internalActions?.invoke()
+      events?.forEach { discreteEventSubject.onNext(it) }
     }
 }
 
@@ -73,16 +73,31 @@ private fun <S : Any> TransitionConfig<S, *>.reduceActions(
   previousState: S,
   newState: S,
   payload: Any,
-  discreteEventSubject: Subject<Any>
 ): (() -> Unit)? {
   return actions?.let { list ->
     {
       list.forEach { body ->
+        body(previousState, newState, payload)
+      }
+    }
+  }
+}
+
+private fun <S : Any> TransitionConfig<S, *>.reduceInternalActions(
+  previousState: S,
+  newState: S,
+  payload: Any,
+): (() -> List<Any>)? {
+  return actionsWithEvent?.let { list ->
+    {
+      val events = mutableListOf<Any>()
+      list.forEach { body ->
         val event = body(previousState, newState, payload)
         if (event != null) {
-          discreteEventSubject.onNext(event)
+          events.add(event)
         }
       }
+      events
     }
   }
 }
