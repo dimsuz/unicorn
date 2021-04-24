@@ -463,20 +463,3 @@ private fun Arb.Companion.events(): Arb<Event> {
     }
   }
 }
-
-fun main() {
-  val subject = PublishSubject.create<String>()
-  Observable
-    .merge(
-      subject.map { it to { } },
-      Observable.just("flow1", "flow2")
-        .map { it to { subject.onNext(it.toUpperCase()) } }
-    )
-    .scan("*" to { }) { accumulator, value ->
-      (accumulator.first + "_" + value.first) to value.second
-    }
-    .subscribe {
-      it.second()
-      println("got ${it.first}")
-    }
-}

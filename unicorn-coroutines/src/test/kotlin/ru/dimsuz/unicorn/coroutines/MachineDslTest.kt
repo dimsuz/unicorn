@@ -14,14 +14,9 @@ import io.kotest.property.arbitrary.string
 import io.kotest.property.checkAll
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asFlow
-import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.merge
-import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.onStart
-import kotlinx.coroutines.flow.scan
-import kotlinx.coroutines.runBlocking
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.time.ExperimentalTime
 
@@ -442,39 +437,28 @@ class MachineDslTest : ShouldSpec({
       val m = machine<Int, Event> {
         initial = 0 to null
 
-        onEach(flowOf("he", "llo")) {
-          actionWithEvent { s, _, payload ->
-            println("onEach action: $s, $payload")
-            Event.E1(88)
+        onEach(flowOf(10, 20)) {
+          actionWithEvent { _, _, payload ->
+            Event.E1(payload)
           }
         }
 
         on(Event.E1::class) {
           transitionTo { state, payload ->
-            println("transition state E1 with ${payload.value}")
             state + payload.value
           }
         }
       }
 
       m.transitionStream.test {
-        val states = mutableListOf<Int>()
+        var lastState: Int? = null
         repeat(5) {
           val (s, actions) = expectItem()
-          println("iteration $it, received state $s")
-          states.add(s)
-          println("iteration $it, started running actions")
+          lastState = s
           actions?.invoke()
-          println("iteration $it, finished running actions")
         }
 
-        states shouldContainExactly listOf(
-          0, // initial
-          0, // after reducing "he", event E1 fired as a side-effect
-          88, // after receiving E1, reducing it
-          88, // after reducing "llo", event E1 fired as a side-effect
-          176 // after receiving E1, reducing it
-        )
+        lastState shouldBe 30
       }
     }
 
@@ -483,8 +467,8 @@ class MachineDslTest : ShouldSpec({
         initial = 0 to null
 
         on(Event.E2::class) {
-          actionWithEvent { _, _, _ ->
-            Event.E1(88)
+          actionWithEvent { _, _, event ->
+            Event.E1(if (event.value == "he") 10 else 20)
           }
         }
 
@@ -499,23 +483,14 @@ class MachineDslTest : ShouldSpec({
         m.send(Event.E2("he"))
         m.send(Event.E2("llo"))
 
-        val states = mutableListOf<Int>()
+        var lastState: Int? = null
         repeat(5) {
           val (s, actions) = expectItem()
-          println("iteration $it, received state $s")
-          states.add(s)
-          println("iteration $it, started running actions")
+          lastState = s
           actions?.invoke()
-          println("iteration $it, finished running actions")
         }
 
-        states shouldContainExactly listOf(
-          0, // initial
-          0, // after reducing "he", event E1 fired as a side-effect
-          88, // after receiving E1, reducing it
-          88, // after reducing "llo", event E1 fired as a side-effect
-          176 // after receiving E1, reducing it
-        )
+        lastState shouldBe 30
       }
     }
 
@@ -539,22 +514,5 @@ private fun Arb.Companion.events(): Arb<Event> {
     } else {
       Event.E2(Arb.string().next(rs))
     }
-  }
-}
-
-fun main() {
-  runBlocking {
-    val shared = MutableSharedFlow<String>()
-    merge(
-      shared.map { it to suspend {} },
-      flowOf("flow1", "flow2").map { it to suspend { shared.emit(it.toUpperCase()) } }
-    )
-      .scan("*" to suspend { }) { accumulator, value ->
-        (accumulator.first + "_" + value.first) to value.second
-      }
-      .collect {
-        it.second()
-        println("got ${it.first}")
-      }
   }
 }
