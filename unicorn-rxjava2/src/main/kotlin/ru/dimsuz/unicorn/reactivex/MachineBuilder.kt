@@ -60,24 +60,14 @@ private fun <S : Any> buildTransitionStream(
       val previousState = stateBundle.state
       val nextState = payloadBundle.second.reducer(previousState, payload)
       val nextAction = payloadBundle.second.reduceActions(previousState, nextState, payload)
-      val nextInternalAction = payloadBundle.second.reduceInternalActions(previousState, nextState, payload)
-      TransitionResult(nextState, nextAction, nextInternalAction)
+      TransitionResult(nextState, nextAction)
     }
     .flatMapSingle { result ->
-      val actions = when {
-        result.actions != null && result.internalActions != null -> {
-          result.actions.andThen(result.internalActions)
-            .doAfterSuccess { events -> events.forEach { discreteEventSubject.onNext(it) } }
-            .ignoreElement()
-        }
-        result.internalActions != null -> {
-          result.internalActions
-            .doAfterSuccess { events -> events.forEach { discreteEventSubject.onNext(it) } }
-            .ignoreElement()
-        }
-        result.actions != null -> result.actions
-        else -> Completable.complete()
-      }
+      val actions = if (result.actions != null) {
+        result.actions
+          .doAfterSuccess { events -> events.forEach { discreteEventSubject.onNext(it) } }
+          .ignoreElement()
+      } else Completable.complete()
       actions
         .let { if (actionsScheduler != null) it.subscribeOn(actionsScheduler) else it }
         .andThen(Single.just(result.state))
@@ -87,8 +77,7 @@ private fun <S : Any> buildTransitionStream(
 private fun <S : Any> buildInitialState(config: InitialStateConfig<S>): TransitionResult<S> {
   return TransitionResult(
     state = config.first,
-    actions = config.second?.let { Completable.fromAction(it) },
-    internalActions = null
+    actions = config.second?.let { Completable.fromAction(it).toSingleDefault(emptyList()) },
   )
 }
 
@@ -96,31 +85,14 @@ private fun <S : Any> TransitionConfig<S, *>.reduceActions(
   previousState: S,
   newState: S,
   payload: Any,
-): Completable? {
-  return actions?.let { list ->
-    Completable.fromAction {
-      list.forEach { body ->
-        body(previousState, newState, payload)
-      }
-    }
-  }
-}
-
-private fun <S : Any> TransitionConfig<S, *>.reduceInternalActions(
-  previousState: S,
-  newState: S,
-  payload: Any,
 ): Single<List<Any>>? {
-  return actionsWithEvent?.let { list ->
+  return actions?.let { list ->
     Single.fromCallable {
-      val events = mutableListOf<Any>()
-      list.forEach { body ->
+      list.fold(mutableListOf()) { events, body ->
         val event = body(previousState, newState, payload)
-        if (event != null) {
-          events.add(event)
-        }
+        if (event != null) events.add(event)
+        events
       }
-      events
     }
   }
 }
