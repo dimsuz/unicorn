@@ -6,15 +6,22 @@ import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.scan
+import kotlinx.coroutines.flow.transform
 import ru.dimsuz.unicorn.coroutines.TransitionConfig.EventConfig
+import kotlin.coroutines.CoroutineContext
 
 internal fun <S : Any, E : Any> buildMachine(
-  machineConfig: MachineConfig<S, *>
+  machineConfig: MachineConfig<S, *>,
+  actionsContext: CoroutineContext? = null,
 ): Machine<S, E> {
   return object : Machine<S, E> {
     val discreteEventFlow = MutableSharedFlow<Any>()
-    override val transitionStream: Flow<TransitionResult<S>>
-      get() = buildTransitionStream(machineConfig, discreteEventFlow)
+    override val states: Flow<S>
+      get() = buildTransitionStream(
+        machineConfig,
+        discreteEventFlow,
+        actionsContext,
+      )
 
     override suspend fun send(e: E) {
       discreteEventFlow.emit(e)
@@ -28,8 +35,9 @@ internal fun <S : Any, E : Any> buildMachine(
 
 private fun <S : Any> buildTransitionStream(
   machineConfig: MachineConfig<S, *>,
-  discreteEventFlow: MutableSharedFlow<Any>
-): Flow<TransitionResult<S>> {
+  discreteEventFlow: MutableSharedFlow<Any>,
+  actionsContext: CoroutineContext?,
+): Flow<S> {
   val discreteEventSources = machineConfig.transitions
     .filter { it.eventConfig is EventConfig.Discrete }
     .map { transitionConfig ->
@@ -60,6 +68,11 @@ private fun <S : Any> buildTransitionStream(
         discreteEventFlow
       )
       TransitionResult(nextState, nextAction)
+    }
+    // no analog for doOnSuccess, so using transform (inspired by Flow.onEach() implementation)
+    .transform { result ->
+      emit(result.state)
+      result.actions?.invoke()
     }
 }
 

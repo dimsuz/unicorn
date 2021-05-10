@@ -3,7 +3,7 @@ package ru.dimsuz.unicorn.coroutines
 import kotlinx.coroutines.flow.Flow
 
 interface Machine<S : Any, E : Any> {
-  val transitionStream: Flow<TransitionResult<S>>
+  val states: Flow<S>
 
   /**
    * Sends event [e] to the machine, suspending in case event buffer is overflown.

@@ -16,7 +16,6 @@ import io.kotest.property.checkAll
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asFlow
 import kotlinx.coroutines.flow.flowOf
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.time.ExperimentalTime
@@ -35,8 +34,8 @@ class MachineDslTest : ShouldSpec({
         initial = 3 to null
       }
 
-      m.transitionStream.test {
-        expectItem() shouldBe TransitionResult(3, null)
+      m.states.test {
+        expectItem() shouldBe 3
         expectComplete()
       }
     }
@@ -57,7 +56,7 @@ class MachineDslTest : ShouldSpec({
         val expectedStates = mutableListOf(initialValue)
         payloads.mapTo(expectedStates) { payload -> expectedStates.last() + payload }
 
-        m.transitionStream.map { it.state }.test {
+        m.states.test {
           expectedStates.forEach { expectedState ->
             expectItem() shouldBe expectedState
           }
@@ -79,7 +78,7 @@ class MachineDslTest : ShouldSpec({
           }
         }
 
-        m.transitionStream.map { it.state }.test {
+        m.states.test {
           // Act
           events.forEach { m.send(it) }
 
@@ -108,7 +107,7 @@ class MachineDslTest : ShouldSpec({
         }
       }
 
-      m.transitionStream.map { it.state }.test {
+      m.states.test {
         expectItem() shouldBe listOf(3)
         expectItem() shouldBe listOf(3)
         expectComplete()
@@ -124,7 +123,7 @@ class MachineDslTest : ShouldSpec({
         }
       }
 
-      m.transitionStream.map { it.state }.test {
+      m.states.test {
         m.send(Event.E1(24))
         expectItem() shouldBe listOf(3)
         expectItem() shouldBe listOf(3)
@@ -145,7 +144,7 @@ class MachineDslTest : ShouldSpec({
           }
         }
 
-        m.transitionStream.map { it.state }.test {
+        m.states.test {
           // Act
           events.forEach { event ->
             when (event) {
@@ -189,7 +188,7 @@ class MachineDslTest : ShouldSpec({
         }
       }
 
-      m.transitionStream.map { it.state }.test {
+      m.states.test {
         repeat(7) { expectItem() } // initial + 6 emissions
         expectComplete()
         firstBlockCallCount shouldBe 3
@@ -206,7 +205,7 @@ class MachineDslTest : ShouldSpec({
         }
       }
 
-      m.transitionStream.map { it.state }.test {
+      m.states.test {
         repeat(4) { expectItem() } // initial + 3 emissions
         expectComplete()
       }
@@ -222,10 +221,9 @@ class MachineDslTest : ShouldSpec({
         initial = 3 to { executed = true }
       }
 
-      m.transitionStream.test {
+      m.states.test {
         // Act
-        val (_, actions) = expectItem()
-        actions?.invoke()
+        expectItem()
         expectComplete()
 
         // Assert
@@ -243,11 +241,10 @@ class MachineDslTest : ShouldSpec({
         }
       }
 
-      m.transitionStream.test {
+      m.states.test {
         // Act
         repeat(5) {
-          val (_, actions) = expectItem()
-          actions?.invoke()
+          expectItem()
         }
         expectComplete()
 
@@ -274,11 +271,10 @@ class MachineDslTest : ShouldSpec({
         }
       }
 
-      m.transitionStream.test {
+      m.states.test {
         // Act
         repeat(4) {
-          val (_, actions) = expectItem()
-          actions?.invoke()
+          expectItem()
         }
         expectComplete()
 
@@ -329,14 +325,13 @@ class MachineDslTest : ShouldSpec({
         }
       }
 
-      m.transitionStream.test {
+      m.states.test {
         m.send(Event.E2("33"))
         m.send(Event.E1(88))
 
         // Act
         repeat(3) {
-          val (_, actions) = expectItem()
-          actions?.invoke()
+          expectItem()
         }
 
         // Assert
@@ -367,10 +362,9 @@ class MachineDslTest : ShouldSpec({
         }
       }
 
-      m.transitionStream.test {
+      m.states.test {
         repeat(3) {
-          val (_, actions) = expectItem()
-          actions?.invoke()
+          expectItem()
         }
         expectComplete()
 
@@ -397,10 +391,9 @@ class MachineDslTest : ShouldSpec({
         }
       }
 
-      m.transitionStream.test {
+      m.states.test {
         repeat(4) {
-          val (_, actions) = expectItem()
-          actions?.invoke()
+          expectItem()
         }
         expectComplete()
 
@@ -420,14 +413,13 @@ class MachineDslTest : ShouldSpec({
         }
       }
 
-      m.transitionStream.test {
+      m.states.test {
         m.send(Event.E1(1))
         m.send(Event.E1(2))
         m.send(Event.E1(3))
 
         repeat(4) {
-          val (_, actions) = expectItem()
-          actions?.invoke()
+          expectItem()
         }
 
         count shouldBe 3
@@ -451,12 +443,10 @@ class MachineDslTest : ShouldSpec({
         }
       }
 
-      m.transitionStream.test {
+      m.states.test {
         var lastState: Int? = null
         repeat(5) {
-          val (s, actions) = expectItem()
-          lastState = s
-          actions?.invoke()
+          lastState = expectItem()
         }
 
         lastState shouldBe 30
@@ -480,26 +470,25 @@ class MachineDslTest : ShouldSpec({
         }
       }
 
-      m.transitionStream.test {
+      m.states.test {
         m.send(Event.E2("he"))
         m.send(Event.E2("llo"))
 
         var lastState: Int? = null
         repeat(5) {
-          val (s, actions) = expectItem()
+          val s = expectItem()
           lastState = s
-          actions?.invoke()
         }
 
         lastState shouldBe 30
       }
     }
 
-    should("run actions on specified scheduler") {
+    should("run actions on current thread by default") {
       fail("todo")
     }
 
-    should("run actions with event on specified scheduler") {
+    should("run actions on specified scheduler") {
       fail("todo")
     }
 
