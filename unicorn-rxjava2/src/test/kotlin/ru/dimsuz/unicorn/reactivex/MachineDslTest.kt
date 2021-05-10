@@ -1,10 +1,10 @@
 package ru.dimsuz.unicorn.reactivex
 
-import io.kotest.assertions.fail
 import io.kotest.assertions.throwables.shouldThrowMessage
 import io.kotest.core.spec.style.ShouldSpec
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.shouldNotBe
 import io.kotest.property.Arb
 import io.kotest.property.arbitrary.arbitrary
 import io.kotest.property.arbitrary.int
@@ -14,8 +14,10 @@ import io.kotest.property.arbitrary.string
 import io.kotest.property.checkAll
 import io.reactivex.Observable
 import io.reactivex.observers.TestObserver
+import io.reactivex.schedulers.Schedulers
 import io.reactivex.subjects.PublishSubject
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 
 class MachineDslTest : ShouldSpec({
   context("initial state") {
@@ -430,12 +432,66 @@ class MachineDslTest : ShouldSpec({
       )
     }
 
-    should("run actions on specified scheduler") {
-      fail("todo")
+    should("run actions on current thread by default") {
+      val testThreadId = Thread.currentThread().id
+      val onEachActionThreadId = AtomicLong()
+      val onActionThreadId = AtomicLong()
+      val onActionWithEventThreadId = AtomicLong()
+      val m = machine<Int, Event>() {
+        initial = 3 to null
+        onEach(Observable.just(10)) {
+          action { _, _, _ -> onEachActionThreadId.set(Thread.currentThread().id) }
+        }
+
+        on(Event.E1::class) {
+          action { _, _, _ -> onActionThreadId.set(Thread.currentThread().id) }
+        }
+
+        on(Event.E2::class) {
+          actionWithEvent { _, _, _ -> onActionWithEventThreadId.set(Thread.currentThread().id); null }
+        }
+      }
+
+      val observer =
+        createSubscribedTestObserver(m.states)
+      m.send(Event.E1(33))
+      m.send(Event.E2("hello"))
+
+      observer.awaitCount(4)
+      onEachActionThreadId.get() shouldBe testThreadId
+      onActionThreadId.get() shouldBe testThreadId
+      onActionWithEventThreadId.get() shouldBe testThreadId
     }
 
-    should("run actions with event on specified scheduler") {
-      fail("todo")
+    should("run actions on specified scheduler") {
+      val testThreadId = Thread.currentThread().id
+      val onEachActionThreadId = AtomicLong()
+      val onActionThreadId = AtomicLong()
+      val onActionWithEventThreadId = AtomicLong()
+      val m = machine<Int, Event>(Schedulers.newThread()) {
+        initial = 3 to null
+        onEach(Observable.just(10)) {
+          action { _, _, _ -> onEachActionThreadId.set(Thread.currentThread().id) }
+        }
+
+        on(Event.E1::class) {
+          action { _, _, _ -> onActionThreadId.set(Thread.currentThread().id) }
+        }
+
+        on(Event.E2::class) {
+          actionWithEvent { _, _, _ -> onActionWithEventThreadId.set(Thread.currentThread().id); null }
+        }
+      }
+
+      val observer =
+        createSubscribedTestObserver(m.states)
+      m.send(Event.E1(33))
+      m.send(Event.E2("hello"))
+
+      observer.awaitCount(4)
+      onEachActionThreadId.get() shouldNotBe testThreadId
+      onActionThreadId.get() shouldNotBe testThreadId
+      onActionWithEventThreadId.get() shouldNotBe testThreadId
     }
 
     // TODO error when 2 transitionTo blocks
