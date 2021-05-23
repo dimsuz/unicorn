@@ -1,11 +1,11 @@
 package ru.dimsuz.unicorn.coroutines
 
 import app.cash.turbine.test
-import io.kotest.assertions.fail
 import io.kotest.assertions.throwables.shouldThrowMessage
 import io.kotest.core.spec.style.ShouldSpec
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.shouldNotBe
 import io.kotest.property.Arb
 import io.kotest.property.arbitrary.arbitrary
 import io.kotest.property.arbitrary.int
@@ -13,11 +13,14 @@ import io.kotest.property.arbitrary.list
 import io.kotest.property.arbitrary.next
 import io.kotest.property.arbitrary.string
 import io.kotest.property.checkAll
+import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.onStart
+import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 import kotlin.time.ExperimentalTime
 
 @ExperimentalTime
@@ -484,12 +487,80 @@ class MachineDslTest : ShouldSpec({
       }
     }
 
+    // TODO this checks the current thread, but it really should check running in the current `CoroutineContext`!
+    //   currently not sure how to check that
     should("run actions on current thread by default") {
-      fail("todo")
+      val testThreadId = Thread.currentThread().id
+      val onEachActionThreadId = AtomicLong()
+      val onActionThreadId = AtomicLong()
+      val onActionWithEventThreadId = AtomicLong()
+      val m = machine<Int, Event> {
+        initial = 3 to null
+        onEach(flowOf(10)) {
+          action { _, _, _ -> onEachActionThreadId.set(Thread.currentThread().id) }
+        }
+
+        on(Event.E1::class) {
+          action { _, _, _ -> onActionThreadId.set(Thread.currentThread().id) }
+        }
+
+        on(Event.E2::class) {
+          actionWithEvent { _, _, _ -> onActionWithEventThreadId.set(Thread.currentThread().id); null }
+        }
+      }
+
+      m.states.test {
+        expectItem()
+        expectItem()
+        m.send(Event.E1(33))
+        expectItem()
+        m.send(Event.E2("hello"))
+        expectItem()
+
+        onEachActionThreadId.get() shouldBe testThreadId
+        onActionThreadId.get() shouldBe testThreadId
+        onActionWithEventThreadId.get() shouldBe testThreadId
+      }
     }
 
-    should("run actions on specified scheduler") {
-      fail("todo")
+    should("run actions on specified dispatcher") {
+      val testThreadId = Thread.currentThread().id
+      val onEachActionThreadId = AtomicLong()
+      val onActionThreadId = AtomicLong()
+      val onActionWithEventThreadId = AtomicLong()
+      val m = machine<Int, Event>(Executors.newFixedThreadPool(8).asCoroutineDispatcher()) {
+        initial = 3 to null
+        onEach(flowOf(10)) {
+          action { _, _, _ ->
+            onEachActionThreadId.set(Thread.currentThread().id)
+          }
+        }
+
+        on(Event.E1::class) {
+          action { _, _, _ ->
+            onActionThreadId.set(Thread.currentThread().id)
+          }
+        }
+
+        on(Event.E2::class) {
+          actionWithEvent { _, _, _ ->
+            onActionWithEventThreadId.set(Thread.currentThread().id); null
+          }
+        }
+      }
+
+      m.states.test {
+        expectItem()
+        expectItem()
+        m.send(Event.E1(33))
+        expectItem()
+        m.send(Event.E2("hello"))
+        expectItem()
+
+        onEachActionThreadId.get() shouldNotBe testThreadId
+        onActionThreadId.get() shouldNotBe testThreadId
+        onActionWithEventThreadId.get() shouldNotBe testThreadId
+      }
     }
 
     // TODO error when 2 transitionTo blocks

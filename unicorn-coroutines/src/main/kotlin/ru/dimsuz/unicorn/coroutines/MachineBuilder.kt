@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.scan
 import kotlinx.coroutines.flow.transform
+import kotlinx.coroutines.withContext
 import ru.dimsuz.unicorn.coroutines.TransitionConfig.EventConfig
 import kotlin.coroutines.CoroutineContext
 
@@ -72,7 +73,13 @@ private fun <S : Any> buildTransitionStream(
     // no analog for doOnSuccess, so using transform (inspired by Flow.onEach() implementation)
     .transform { result ->
       emit(result.state)
-      result.actions?.invoke()
+      if (actionsContext != null) {
+        withContext(actionsContext) {
+          result.actions?.invoke()
+        }
+      } else {
+        result.actions?.invoke()
+      }
     }
 }
 
@@ -101,12 +108,16 @@ private fun <S : Any> TransitionConfig<S, *>.reduceActions(
   }
 }
 
-fun <S : Any, E : Any> machine(init: MachineDsl<S, E>.() -> Unit): Machine<S, E> {
+fun <S : Any, E : Any> machine(
+  actionsContext: CoroutineContext? = null,
+  init: MachineDsl<S, E>.() -> Unit
+): Machine<S, E> {
   val machineDsl = MachineDsl<S, E>()
   machineDsl.init()
   return buildMachine(
     MachineConfig.create(
       machineDsl
-    )
+    ),
+    actionsContext
   )
 }
