@@ -494,6 +494,26 @@ class MachineDslTest : ShouldSpec({
       onActionWithEventThreadId.get() shouldNotBe testThreadId
     }
 
+    should("run actions on specified scheduler and keep source observable thread untouched") {
+      val onEachActionThreadId = AtomicLong()
+      val sourceThreadId = AtomicLong()
+      val m = machine<Int, Event>(Schedulers.single()) {
+        initial = 3 to null
+
+        onEach(
+          Observable.fromCallable { sourceThreadId.set(Thread.currentThread().id); 10 }.subscribeOn(Schedulers.io())
+        ) {
+          action { _, _, _ -> onEachActionThreadId.set(Thread.currentThread().id) }
+        }
+      }
+
+      val observer =
+        createSubscribedTestObserver(m.states)
+
+      observer.awaitCount(2)
+      onEachActionThreadId.get() shouldNotBe sourceThreadId.get()
+    }
+
     // TODO error when 2 transitionTo blocks
     // TODO no error when no transitions and no actions
   }
