@@ -70,7 +70,7 @@ private fun <S : Any> buildTransitionStream(
       )
       TransitionResult(nextState, nextAction)
     }
-    // no analog for doOnSuccess, so using transform (inspired by Flow.onEach() implementation)
+    // no analog for doAfterSuccess, so using transform (inspired by Flow.onEach() implementation)
     .transform { result ->
       emit(result.state)
       if (actionsContext != null) {

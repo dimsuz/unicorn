@@ -4,6 +4,7 @@ import app.cash.turbine.test
 import io.kotest.assertions.throwables.shouldThrowMessage
 import io.kotest.core.spec.style.ShouldSpec
 import io.kotest.matchers.collections.shouldContainExactly
+import io.kotest.matchers.longs.shouldBeGreaterThan
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.kotest.property.Arb
@@ -13,11 +14,26 @@ import io.kotest.property.arbitrary.list
 import io.kotest.property.arbitrary.next
 import io.kotest.property.arbitrary.string
 import io.kotest.property.checkAll
+import io.reactivex.Observable
 import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asFlow
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.merge
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.onStart
+import kotlinx.coroutines.flow.runningReduce
+import kotlinx.coroutines.flow.scan
+import kotlinx.coroutines.flow.scanReduce
+import kotlinx.coroutines.flow.startWith
+import kotlinx.coroutines.flow.transform
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.rx2.asFlow
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
@@ -38,8 +54,8 @@ class MachineDslTest : ShouldSpec({
       }
 
       m.states.test {
-        expectItem() shouldBe 3
-        expectComplete()
+        awaitItem() shouldBe 3
+        awaitComplete()
       }
     }
   }
@@ -56,14 +72,14 @@ class MachineDslTest : ShouldSpec({
         }
 
         // Assert
-        val expectedStates = mutableListOf(initialValue)
-        payloads.mapTo(expectedStates) { payload -> expectedStates.last() + payload }
+        val awaitedStates = mutableListOf(initialValue)
+        payloads.mapTo(awaitedStates) { payload -> awaitedStates.last() + payload }
 
         m.states.test {
-          expectedStates.forEach { expectedState ->
-            expectItem() shouldBe expectedState
+          awaitedStates.forEach { awaitedState ->
+            awaitItem() shouldBe awaitedState
           }
-          expectComplete()
+          awaitComplete()
         }
       }
     }
@@ -86,16 +102,16 @@ class MachineDslTest : ShouldSpec({
           events.forEach { m.send(it) }
 
           // Assert
-          val expectedStates = mutableListOf(listOf(3) to "")
-          events.mapTo(expectedStates) { event ->
-            val state = expectedStates.last()
+          val awaitedStates = mutableListOf(listOf(3) to "")
+          events.mapTo(awaitedStates) { event ->
+            val state = awaitedStates.last()
             when (event) {
               is Event.E1 -> state.copy(first = state.first + event.value)
               is Event.E2 -> state.copy(second = state.second + event.value)
             }
           }
-          expectedStates.forEach { expectedState ->
-            expectItem() shouldBe expectedState
+          awaitedStates.forEach { awaitedState ->
+            awaitItem() shouldBe awaitedState
           }
         }
       }
@@ -111,9 +127,9 @@ class MachineDslTest : ShouldSpec({
       }
 
       m.states.test {
-        expectItem() shouldBe listOf(3)
-        expectItem() shouldBe listOf(3)
-        expectComplete()
+        awaitItem() shouldBe listOf(3)
+        awaitItem() shouldBe listOf(3)
+        awaitComplete()
       }
     }
 
@@ -128,8 +144,8 @@ class MachineDslTest : ShouldSpec({
 
       m.states.test {
         m.send(Event.E1(24))
-        expectItem() shouldBe listOf(3)
-        expectItem() shouldBe listOf(3)
+        awaitItem() shouldBe listOf(3)
+        awaitItem() shouldBe listOf(3)
       }
     }
 
@@ -157,16 +173,16 @@ class MachineDslTest : ShouldSpec({
           }
 
           // Assert
-          val expectedStates = mutableListOf(listOf(3))
-          events.mapTo(expectedStates) { event ->
-            val state = expectedStates.last()
+          val awaitedStates = mutableListOf(listOf(3))
+          events.mapTo(awaitedStates) { event ->
+            val state = awaitedStates.last()
             when (event) {
               is Event.E1 -> state + event.value
               is Event.E2 -> state + event.value.length * 10
             }
           }
-          expectedStates.forEach { expectedState ->
-            expectItem() shouldBe expectedState
+          awaitedStates.forEach { awaitedState ->
+            awaitItem() shouldBe awaitedState
           }
         }
       }
@@ -192,8 +208,8 @@ class MachineDslTest : ShouldSpec({
       }
 
       m.states.test {
-        repeat(7) { expectItem() } // initial + 6 emissions
-        expectComplete()
+        repeat(7) { awaitItem() } // initial + 6 emissions
+        awaitComplete()
         firstBlockCallCount shouldBe 3
         secondBlockCallCount shouldBe 3
       }
@@ -209,8 +225,8 @@ class MachineDslTest : ShouldSpec({
       }
 
       m.states.test {
-        repeat(4) { expectItem() } // initial + 3 emissions
-        expectComplete()
+        repeat(4) { awaitItem() } // initial + 3 emissions
+        awaitComplete()
       }
 
       count.get() shouldBe 1
@@ -226,8 +242,8 @@ class MachineDslTest : ShouldSpec({
 
       m.states.test {
         // Act
-        expectItem()
-        expectComplete()
+        awaitItem()
+        awaitComplete()
 
         // Assert
         executed shouldBe true
@@ -247,9 +263,9 @@ class MachineDslTest : ShouldSpec({
       m.states.test {
         // Act
         repeat(5) {
-          expectItem()
+          awaitItem()
         }
-        expectComplete()
+        awaitComplete()
 
         // Assert
         count shouldBe 4
@@ -277,9 +293,9 @@ class MachineDslTest : ShouldSpec({
       m.states.test {
         // Act
         repeat(4) {
-          expectItem()
+          awaitItem()
         }
-        expectComplete()
+        awaitComplete()
 
         // Assert
         arguments shouldContainExactly listOf(
@@ -334,7 +350,7 @@ class MachineDslTest : ShouldSpec({
 
         // Act
         repeat(3) {
-          expectItem()
+          awaitItem()
         }
 
         // Assert
@@ -367,9 +383,9 @@ class MachineDslTest : ShouldSpec({
 
       m.states.test {
         repeat(3) {
-          expectItem()
+          awaitItem()
         }
-        expectComplete()
+        awaitComplete()
 
         markers shouldContainExactly listOf(
           "action1",
@@ -396,9 +412,9 @@ class MachineDslTest : ShouldSpec({
 
       m.states.test {
         repeat(4) {
-          expectItem()
+          awaitItem()
         }
-        expectComplete()
+        awaitComplete()
 
         count shouldBe 3
       }
@@ -422,7 +438,7 @@ class MachineDslTest : ShouldSpec({
         m.send(Event.E1(3))
 
         repeat(4) {
-          expectItem()
+          awaitItem()
         }
 
         count shouldBe 3
@@ -449,7 +465,7 @@ class MachineDslTest : ShouldSpec({
       m.states.test {
         var lastState: Int? = null
         repeat(5) {
-          lastState = expectItem()
+          lastState = awaitItem()
         }
 
         lastState shouldBe 30
@@ -479,7 +495,7 @@ class MachineDslTest : ShouldSpec({
 
         var lastState: Int? = null
         repeat(5) {
-          val s = expectItem()
+          val s = awaitItem()
           lastState = s
         }
 
@@ -510,12 +526,12 @@ class MachineDslTest : ShouldSpec({
       }
 
       m.states.test {
-        expectItem()
-        expectItem()
+        awaitItem()
+        awaitItem()
         m.send(Event.E1(33))
-        expectItem()
+        awaitItem()
         m.send(Event.E2("hello"))
-        expectItem()
+        awaitItem()
 
         onEachActionThreadId.get() shouldBe testThreadId
         onActionThreadId.get() shouldBe testThreadId
@@ -550,12 +566,12 @@ class MachineDslTest : ShouldSpec({
       }
 
       m.states.test {
-        expectItem()
-        expectItem()
+        awaitItem()
+        awaitItem()
         m.send(Event.E1(33))
-        expectItem()
+        awaitItem()
         m.send(Event.E2("hello"))
-        expectItem()
+        awaitItem()
 
         onEachActionThreadId.get() shouldNotBe testThreadId
         onActionThreadId.get() shouldNotBe testThreadId

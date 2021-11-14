@@ -1,8 +1,8 @@
 plugins {
-  kotlin("jvm") version "1.4.32"
+  kotlin("jvm") version "1.5.31"
   `maven-publish`
   signing
-  id("org.jetbrains.dokka") version "1.4.0-rc"
+  id("org.jetbrains.dokka") version "1.4.32"
 }
 
 allprojects {
