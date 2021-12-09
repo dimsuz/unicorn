@@ -12,7 +12,7 @@ class MachineDsl<S : Any, E : Any> {
   @PublishedApi
   internal val transitions: MutableList<TransitionDsl<S, Any, E>> = arrayListOf()
 
-  inline fun <P : Any> onEach(eventPayloads: Flow<P>, init: TransitionDsl<S, P, E>.() -> Unit) {
+  inline fun <P> onEach(eventPayloads: Flow<P>, init: TransitionDsl<S, P, E>.() -> Unit) {
     val transitionDsl = TransitionDsl<S, P, E>(eventPayloads).apply(init)
     @Suppress("UNCHECKED_CAST") // we know the types here, enforced by dsl
     transitions.add(transitionDsl as TransitionDsl<S, Any, E>)
@@ -26,7 +26,7 @@ class MachineDsl<S : Any, E : Any> {
 }
 
 @StateMachineDsl
-class TransitionDsl<S : Any, P : Any, E : Any> private constructor(
+class TransitionDsl<S : Any, P, E : Any> private constructor(
   internal val eventPayloads: Flow<P>?,
   internal val eventSelector: KClass<out E>?
 ) {

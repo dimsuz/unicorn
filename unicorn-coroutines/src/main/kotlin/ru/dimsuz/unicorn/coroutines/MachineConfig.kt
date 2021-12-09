@@ -23,22 +23,22 @@ typealias InitialStateConfig<S> = Pair<S, (suspend () -> Unit)?>
 
 internal data class TransitionConfig<S : Any, E : Any>(
   val eventConfig: EventConfig,
-  val actions: List<(S, S, Any) -> E?>?,
-  val reducer: (S, Any) -> S
+  val actions: List<(S, S, Any?) -> E?>?,
+  val reducer: (S, Any?) -> S
 ) {
   sealed class EventConfig {
-    data class Streamed(val payloadSource: Flow<Any>) : EventConfig()
+    data class Streamed(val payloadSource: Flow<Any?>) : EventConfig()
     data class Discrete(val eventSelector: KClass<*>) : EventConfig()
   }
 }
 
-private fun <S : Any, P : Any, E : Any> TransitionDsl<S, P, E>.toTransitionConfig(): TransitionConfig<S, E> {
+private fun <S : Any, P, E : Any> TransitionDsl<S, P, E>.toTransitionConfig(): TransitionConfig<S, E> {
   val reducer = when {
-    reducer != null -> { s: S, p: Any ->
+    reducer != null -> { s: S, p: Any? ->
       @Suppress("UNCHECKED_CAST") // we know the type here
       this.reducer!!(s, p as P)
     }
-    else -> { s: S, _: Any -> s }
+    else -> { s: S, _: Any? -> s }
   }
   return TransitionConfig(
     eventConfig = when {
@@ -55,18 +55,18 @@ private fun <S : Any, P : Any, E : Any> TransitionDsl<S, P, E>.toTransitionConfi
   )
 }
 
-private fun <S : Any, P : Any, E : Any> TransitionDsl<S, P, E>.buildActions(): List<(S, S, Any) -> E?>? {
-  val actions = mutableListOf<(S, S, Any) -> E?>()
+private fun <S : Any, P, E : Any> TransitionDsl<S, P, E>.buildActions(): List<(S, S, Any?) -> E?>? {
+  val actions = mutableListOf<(S, S, Any?) -> E?>()
   return when {
     actionBodies != null -> actionBodies!!.mapTo(actions) { body ->
-      { ps: S, ns: S, p: Any ->
+      { ps: S, ns: S, p: Any? ->
         @Suppress("UNCHECKED_CAST") // we know the type here
         body(ps, ns, p as P)
         null
       }
     }
     actionBodiesWithEvent != null -> actionBodiesWithEvent!!.mapTo(actions) { body ->
-      { ps: S, ns: S, p: Any ->
+      { ps: S, ns: S, p: Any? ->
         @Suppress("UNCHECKED_CAST") // we know the type here
         body(ps, ns, p as P)
       }

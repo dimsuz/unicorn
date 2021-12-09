@@ -58,7 +58,7 @@ private fun <S : Any> buildTransitionStream(
     .merge()
     .scan(
       buildInitialState(machineConfig.initial)
-    ) { stateBundle: TransitionResult<S>, payloadBundle: Pair<Any, TransitionConfig<S, out Any>> ->
+    ) { stateBundle: TransitionResult<S>, payloadBundle: Pair<Any?, TransitionConfig<S, out Any>> ->
       val payload = payloadBundle.first
       val previousState = stateBundle.state
       val nextState = payloadBundle.second.reducer(previousState, payload)
@@ -93,7 +93,7 @@ private fun <S : Any> buildInitialState(config: InitialStateConfig<S>): Transiti
 private fun <S : Any> TransitionConfig<S, *>.reduceActions(
   previousState: S,
   newState: S,
-  payload: Any,
+  payload: Any?,
   discreteEventFlow: MutableSharedFlow<Any>
 ): (suspend () -> Unit)? {
   return actions?.let { list ->

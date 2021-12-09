@@ -4,7 +4,6 @@ import app.cash.turbine.test
 import io.kotest.assertions.throwables.shouldThrowMessage
 import io.kotest.core.spec.style.ShouldSpec
 import io.kotest.matchers.collections.shouldContainExactly
-import io.kotest.matchers.longs.shouldBeGreaterThan
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.kotest.property.Arb
@@ -14,26 +13,11 @@ import io.kotest.property.arbitrary.list
 import io.kotest.property.arbitrary.next
 import io.kotest.property.arbitrary.string
 import io.kotest.property.checkAll
-import io.reactivex.Observable
 import kotlinx.coroutines.asCoroutineDispatcher
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asFlow
-import kotlinx.coroutines.flow.collect
-import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.merge
-import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.onStart
-import kotlinx.coroutines.flow.runningReduce
-import kotlinx.coroutines.flow.scan
-import kotlinx.coroutines.flow.scanReduce
-import kotlinx.coroutines.flow.startWith
-import kotlinx.coroutines.flow.transform
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.rx2.asFlow
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
@@ -81,6 +65,28 @@ class MachineDslTest : ShouldSpec({
           }
           awaitComplete()
         }
+      }
+    }
+
+    should("perform transitions given nullable streamed payloads") {
+      // Arrange
+      val payloads = flowOf(3, null, 4, null, 5)
+      val m = machine<List<Int?>, Unit> {
+        initial = mutableListOf<Int?>() to null
+        onEach(payloads) {
+          transitionTo { state, payload -> state.plus(payload) }
+        }
+      }
+
+      // Assert
+      val awaitedStates = mutableListOf(emptyList<Int?>())
+      listOf(3, null, 4, null, 5).mapTo(awaitedStates) { payload -> awaitedStates.last() + payload }
+
+      m.states.test {
+        awaitedStates.forEach { awaitedState ->
+          awaitItem() shouldBe awaitedState
+        }
+        awaitComplete()
       }
     }
 
