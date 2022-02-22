@@ -13,7 +13,10 @@ internal fun <S : Any, E : Any> buildMachine(
   actionsScheduler: Scheduler?,
 ): Machine<S, E> {
   return object : Machine<S, E> {
+    override val initial: Pair<S, (() -> Unit)?> = machineConfig.initial
+
     private val discreteEventSubject = PublishSubject.create<Any>().toSerialized()
+
     override val states =
       buildTransitionStream(
         machineConfig,

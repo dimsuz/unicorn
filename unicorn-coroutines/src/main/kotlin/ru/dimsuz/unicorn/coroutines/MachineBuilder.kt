@@ -16,7 +16,10 @@ internal fun <S : Any, E : Any> buildMachine(
   actionsContext: CoroutineContext? = null,
 ): Machine<S, E> {
   return object : Machine<S, E> {
+    override val initial: Pair<S, (suspend () -> Unit)?> = machineConfig.initial
+
     val discreteEventFlow = MutableSharedFlow<Any>()
+
     override val states: Flow<S>
       get() = buildTransitionStream(
         machineConfig,

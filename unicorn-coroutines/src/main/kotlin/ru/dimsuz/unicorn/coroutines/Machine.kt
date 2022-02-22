@@ -3,6 +3,7 @@ package ru.dimsuz.unicorn.coroutines
 import kotlinx.coroutines.flow.Flow
 
 interface Machine<S : Any, E : Any> {
+  val initial: Pair<S, (suspend () -> Unit)?>
   val states: Flow<S>
 
   /**
