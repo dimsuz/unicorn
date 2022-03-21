@@ -25,7 +25,7 @@ import kotlin.time.ExperimentalTime
 class MachineDslTest : ShouldSpec({
   context("initial state") {
     should("throw if not specified") {
-      shouldThrowMessage("initial state is missing") {
+      shouldThrowMessage("initial transition is missing") {
         machine<Unit, Unit> { }
       }
     }
