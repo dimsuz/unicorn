@@ -8,14 +8,12 @@ import kotlin.reflect.KClass
 annotation class StateMachineDsl
 
 @StateMachineDsl
-class MachineDsl<S : Any, E : Any> {
+class MachineDsl<S : Any, E : Any>(val events: Flow<E>) {
   var initial: Pair<S, (suspend ActionScope<E>.(S) -> Unit)?>? = null
   var initialLazy: Pair<suspend () -> S, (suspend ActionScope<E>.(S) -> Unit)?>? = null
 
   @PublishedApi
   internal val transitions: MutableList<TransitionDsl<S, S, Any, E>> = arrayListOf()
-
-  val events: Flow<E> = MutableSharedFlow()
 
   inline fun <P> onEach(eventPayloads: Flow<P>, init: TransitionDsl<S, S, P, E>.() -> Unit) {
     val transitionDsl = TransitionDsl<S, S, P, E>(eventPayloads).apply(init)

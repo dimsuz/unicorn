@@ -4,7 +4,7 @@ import kotlinx.coroutines.flow.Flow
 
 internal data class MachineConfig<S : Any, E : Any>(
   val initial: Pair<suspend () -> S, (suspend ActionScope<E>.(S) -> Unit)?>,
-  val transitions: List<TransitionConfig<out S, S, E>>
+  val transitions: List<TransitionConfig<S, S, E>>,
 ) {
   companion object {
     fun <S : Any, E : Any> create(machineDsl: MachineDsl<S, E>): MachineConfig<S, E> {
