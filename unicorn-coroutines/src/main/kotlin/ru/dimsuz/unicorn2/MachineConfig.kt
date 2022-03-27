@@ -22,6 +22,7 @@ internal data class MachineConfig<S : Any, E : Any>(
 internal data class TransitionConfig<S : PS, PS : Any, E : Any>(
   val payloadSource: Flow<Any?>,
   val transition: suspend (S, Any?) -> PS,
+  val action: (suspend (scope: ActionScope<E>, S, PS, Any?) -> Unit)?,
 )
 
 @Suppress("UNCHECKED_CAST") // we know the types here
@@ -31,5 +32,6 @@ private fun <S : PS, PS : Any, P, E : Any> TransitionDsl<S, PS, P, E>.toTransiti
     transition = { s : S, p: Any? ->
       this.transition?.invoke(s, p as P) ?: s
     },
+    action = action as (suspend (scope: ActionScope<E>, S, PS, Any?) -> Unit)?
   )
 }

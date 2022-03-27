@@ -10,7 +10,7 @@ import kotlinx.coroutines.flow.transform
 fun <S : Any, E : Any> machine(
   init: MachineDsl<S, E>.() -> Unit
 ): Machine<S, E> {
-  val events = MutableSharedFlow<E>()
+  val events = MutableSharedFlow<E>(extraBufferCapacity = 12)
   val machineDsl = MachineDsl<S, E>(events).apply(init)
   return buildMachine(
     MachineConfig.create(
@@ -55,12 +55,11 @@ private fun <S : Any, E : Any> buildStatesFlow(
     }
     .merge()
     .runningFold(
-      suspend { buildInitialState(machineConfig.initial, actionScope) },
-      ::produceResult,
-    )
+      { buildInitialState(machineConfig.initial, actionScope) }
+    ) { accumulator, value -> produceResult(accumulator, value, actionScope) }
     .transform { result ->
       emit(result.state)
-      result.actions?.invoke()
+      result.action?.invoke()
     }
 }
 
@@ -81,36 +80,16 @@ fun <T, R> Flow<T>.runningFold(initial: suspend () -> R, operation: suspend (acc
 private suspend fun <S : Any, E : Any> produceResult(
   stateBundle: TransitionResult<S>,
   payloadBundle: Pair<Any?, TransitionConfig<S, S, E>>,
+  actionScope: ActionScope<E>,
 ): TransitionResult<S> {
   val payload = payloadBundle.first
   val previousState = stateBundle.state
   val nextState = payloadBundle.second.transition(previousState, payload)
-//  val nextAction = payloadBundle.second.reduceActions(
-//    previousState,
-//    nextState,
-//    payload,
-//    discreteEventFlow
-//  )
-  return TransitionResult(nextState, null)
+  val action = payloadBundle.second.action?.let {
+    suspend { it(actionScope, previousState, nextState, payload) }
+  }
+  return TransitionResult(nextState, action)
 }
-
-//private fun <S : Any, E : Any> TransitionConfig<S, S, E>.reduceActions(
-//  previousState: S,
-//  newState: S,
-//  payload: Any?,
-//  discreteEventFlow: MutableSharedFlow<Any>
-//): (suspend () -> Unit)? {
-//  return actions?.let { list ->
-//    {
-//      list.forEach { body ->
-//        val event = body(previousState, newState, payload)
-//        if (event != null) {
-//          discreteEventFlow.emit(event)
-//        }
-//      }
-//    }
-//  }
-//}
 
 private suspend fun <S : Any, E : Any> buildInitialState(
   config: Pair<suspend () -> S, (suspend ActionScope<E>.(S) -> Unit)?>,
@@ -119,11 +98,11 @@ private suspend fun <S : Any, E : Any> buildInitialState(
   val s = config.first()
   return TransitionResult(
     state = s,
-    actions = { config.second?.invoke(actionScope, s) }
+    action = { config.second?.invoke(actionScope, s) }
   )
 }
 
 internal data class TransitionResult<S : Any>(
   val state: S,
-  val actions: (suspend () -> Unit)?
+  val action: (suspend () -> Unit)?
 )

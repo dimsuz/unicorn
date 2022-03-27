@@ -122,6 +122,25 @@ class MachineDslTest : ShouldSpec({
       }
     }
 
+    should("respect event emitted from initial action") {
+      val m = machine<Int, Event> {
+        initial = 3 to {
+          sendEvent(Event.E1(33))
+        }
+
+        onEach(events.filterIsInstance<Event.E1>()) {
+          transitionTo { _, e ->
+            e.value
+          }
+        }
+      }
+
+      m.states.test {
+        awaitItem() shouldBe 3
+        awaitItem() shouldBe 33
+      }
+    }
+
     should("not throw errors when no transitions in onEach-clause") {
       // such machine is valid because it can contain actions to execute
       val m = machine<List<Int>, Unit> {
@@ -374,35 +393,6 @@ class MachineDslTest : ShouldSpec({
       }
     }
 
-    should("merge actions in the onEach-clause and execute them sequentially") {
-      val markers: MutableList<String> = arrayListOf()
-      val m = machine<List<Int>, Unit> {
-        initial = listOf(3) to null
-        onEach(flowOf(1, 2)) {
-          transitionTo { state, _ -> state }
-          action { _, _, _ -> markers.add("action1") }
-          action { _, _, _ -> markers.add("action2") }
-          action { _, _, _ -> markers.add("action3") }
-        }
-      }
-
-      m.states.test {
-        repeat(3) {
-          awaitItem()
-        }
-        awaitComplete()
-
-        markers shouldContainExactly listOf(
-          "action1",
-          "action2",
-          "action3",
-          "action1",
-          "action2",
-          "action3"
-        )
-      }
-    }
-
     should("execute action in onEach only once per reduce") {
       var count = 0
       val m = machine<Int, Event> {
@@ -447,6 +437,34 @@ class MachineDslTest : ShouldSpec({
         }
 
         count shouldBe 3
+      }
+    }
+
+    should("emit state when transition also emitted an event") {
+      val m = machine<Int, Event> {
+        initial = 0 to null
+
+        onEach(flowOf(10)) {
+          transitionTo { _, _ ->
+            1
+          }
+
+          action { _, _, payload ->
+            sendEvent(Event.E2("ev"))
+          }
+        }
+
+        onEach(events.filterIsInstance<Event.E2>()) {
+          transitionTo { _, _ ->
+            2
+          }
+        }
+      }
+
+      m.states.test {
+        awaitItem() shouldBe 0
+        awaitItem() shouldBe 1
+        awaitItem() shouldBe 2
       }
     }
 
