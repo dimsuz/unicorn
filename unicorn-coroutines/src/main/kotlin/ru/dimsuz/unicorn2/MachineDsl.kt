@@ -20,6 +20,18 @@ class MachineDsl<S : Any, E : Any>(val events: Flow<E>) {
     @Suppress("UNCHECKED_CAST") // we know the types here, enforced by dsl
     transitions.add(transitionDsl as TransitionDsl<S, S, Any, E>)
   }
+
+  inline fun <reified T : S> whenIn(init: StateDsl<T, S, E>.() -> Unit) {
+  }
+}
+
+@StateMachineDsl
+class StateDsl<S : PS, PS : Any, E : Any> {
+  inline fun <P> onEach(eventPayloads: Flow<P>, init: TransitionDsl<S, PS, P, E>.() -> Unit) {
+    val transitionDsl = TransitionDsl<S, PS, P, E>(eventPayloads).apply(init)
+    @Suppress("UNCHECKED_CAST") // we know the types here, enforced by dsl
+    transitions.add(transitionDsl as TransitionDsl<S, S, Any, E>)
+  }
 }
 
 @StateMachineDsl

@@ -565,7 +565,52 @@ class MachineDslTest : ShouldSpec({
     // TODO error when 2 transitionTo blocks
     // TODO no error when no transitions and no actions
   }
+
+  context("substate") {
+    context("transitions") {
+      should("perform transitions corresponding to substate branch") {
+        val machine = machine<ViewState, Unit> {
+          initial = ViewState.A(value = 3) to null
+
+          whenIn<ViewState.A> {
+            onEach(flowOf(1,2,3)) {
+              transitionTo { state, v -> if (v != 3) state.copy(value = state.value + v) else ViewState.B("foo") }
+            }
+          }
+
+          whenIn<ViewState.B> {
+            onEach(flowOf("bar", "baz")) {
+              transitionTo { state, v -> state.copy(value = state.value + v) }
+            }
+          }
+        }
+
+        machine.states.test {
+          awaitItem() shouldBe ViewState.A(value = 3)
+          awaitItem() shouldBe ViewState.A(value = 4)
+          awaitItem() shouldBe ViewState.A(value = 6)
+          awaitItem() shouldBe ViewState.B(value = "foo")
+          awaitItem() shouldBe ViewState.B(value = "bar")
+          awaitItem() shouldBe ViewState.B(value = "baz")
+          awaitComplete()
+        }
+      }
+
+      should("perform top level transitions") {
+        // top-level onEach should still work
+      }
+
+      should("keep only payload sources active in a current sub-state") {
+        // TODO decide if the option to keep all connections is required
+      }
+    }
+  }
 })
+
+private sealed class ViewState {
+  data class A(val value: Int) : ViewState()
+  data class B(val value: String) : ViewState()
+}
 
 private sealed class Event {
   data class E1(val value: Int) : Event()
