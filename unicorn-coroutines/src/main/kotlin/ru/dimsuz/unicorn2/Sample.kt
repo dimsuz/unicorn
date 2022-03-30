@@ -20,8 +20,23 @@ data class State(
 )
 
 val m1 = machine<CompoundState, Unit> {
+  onEach(events) {
+    transitionTo { state, payload ->
+      println("in 'root' state $state, having event $payload")
+      state
+    }
+  }
+
   onEach(flowOf("Noah")) {
-    whenIn<CompoundState.State1> {
+    action { _, _, _ ->
+      // should fire up each time any of sub states change, because it's the root!
+      //  (flowOf should actually be some shared hot flow of course)
+      println("in 'root state")
+    }
+  }
+
+  whenIn<CompoundState.State1> {
+    onEach(flowOf("Noah")) {
       transitionTo { state, name ->
         CompoundState.State2(price = 3)
       }
@@ -30,26 +45,36 @@ val m1 = machine<CompoundState, Unit> {
         sendEvent(Unit)
       }
     }
+  }
 
-    whenIn<CompoundState.State2> {
+  whenIn<CompoundState.State2> {
+    onEach(flowOf("Noah")) {
       transitionTo { s, payload ->
         s.copy(price = s.price + 110)
       }
     }
 
-    whenIn<CompoundState.State3> {
-      whenIn<CompoundState.State3.State3a> {
-        transitionTo { state: CompoundState.State3.State3a, payload: String ->
-          state
-        }
+    onEach(events) {
+      transitionTo { state: CompoundState.State2, payload: Unit ->
+        CompoundState.State3.State3a(i = 33)
       }
     }
   }
 
-  onEach(events) {
-    whenIn<CompoundState.State2> {
-      transitionTo { state: CompoundState.State2, payload: Unit ->
-        CompoundState.State3.State3a(i = 33)
+  whenIn<CompoundState.State3> {
+    onEach(flowOf("Noah")) {
+      action { _, _, _ ->
+        // should fire up each time State3a is active!
+        println("in State3")
+      }
+    }
+  }
+
+  whenIn<CompoundState.State3.State3a> {
+    onEach(flowOf("Noah")) {
+      transitionTo { state, payload ->
+        println("in State3a, having a $payload")
+        state
       }
     }
   }
