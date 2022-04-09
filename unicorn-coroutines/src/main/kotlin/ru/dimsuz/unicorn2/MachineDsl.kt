@@ -1,14 +1,16 @@
 package ru.dimsuz.unicorn2
 
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlin.reflect.KClass
 
 @DslMarker
 annotation class StateMachineDsl
 
 @StateMachineDsl
-class MachineDsl<S : Any, E : Any> internal constructor(val events: Flow<E>, @PublishedApi internal val klass: KClass<out S>) {
+class MachineDsl<S : Any, E : Any> @PublishedApi internal constructor(
+  val events: Flow<E>,
+  @PublishedApi internal val klass: KClass<out S>
+) {
   var initial: Pair<S, (suspend ActionScope<E>.(S) -> Unit)?>? = null
   var initialLazy: Pair<suspend () -> S, (suspend ActionScope<E>.(S) -> Unit)?>? = null
 

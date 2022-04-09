@@ -12,9 +12,13 @@ import io.kotest.property.arbitrary.list
 import io.kotest.property.arbitrary.next
 import io.kotest.property.arbitrary.string
 import io.kotest.property.checkAll
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asFlow
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.filterIsInstance
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.onStart
 import java.util.concurrent.atomic.AtomicInteger
@@ -569,17 +573,20 @@ class MachineDslTest : ShouldSpec({
   context("substate") {
     context("transitions") {
       should("perform transitions corresponding to substate branch") {
+        val flow1 = flowOf(1, 2, 3)
+        val flow2 = flowOf("bar", "baz").delayUntilCompletionOf(flow1)
+
         val machine = machine<ViewState, Unit> {
           initial = ViewState.A(value = 3) to null
 
           whenIn<ViewState.A> {
-            onEach(flowOf(1,2,3)) {
+            onEach(flow1) {
               transitionTo { state, v -> if (v != 3) state.copy(value = state.value + v) else ViewState.B("foo") }
             }
           }
 
           whenIn<ViewState.B> {
-            onEach(flowOf("bar", "baz")) {
+            onEach(flow2) {
               transitionTo { state, v -> state.copy(value = state.value + v) }
             }
           }
@@ -590,9 +597,52 @@ class MachineDslTest : ShouldSpec({
           awaitItem() shouldBe ViewState.A(value = 4)
           awaitItem() shouldBe ViewState.A(value = 6)
           awaitItem() shouldBe ViewState.B(value = "foo")
-          awaitItem() shouldBe ViewState.B(value = "bar")
-          awaitItem() shouldBe ViewState.B(value = "baz")
+          awaitItem() shouldBe ViewState.B(value = "foobar")
+          awaitItem() shouldBe ViewState.B(value = "foobarbaz")
           awaitComplete()
+        }
+      }
+
+      should("ignore events for inactive sub-states") {
+        val eventsI = MutableSharedFlow<Int>()
+        val eventsS = MutableSharedFlow<String>()
+
+        val machine = machine<ViewState, Unit> {
+          initial = ViewState.B(value = "hi") to null
+
+          whenIn<ViewState.A> {
+            onEach(eventsI) {
+              transitionTo { state, v -> if (v != 42) state.copy(value = v) else ViewState.B("foo") }
+            }
+          }
+
+          whenIn<ViewState.B> {
+            onEach(eventsS) {
+              transitionTo { state, v -> if (v != "42") state.copy(value = v) else ViewState.A(42) }
+            }
+          }
+        }
+
+        machine.states.test {
+          awaitItem() shouldBe ViewState.B("hi")
+
+          eventsI.emit(1) // should be ignored
+          eventsI.emit(2) // should be ignored
+          eventsS.emit("foo")
+          awaitItem() shouldBe ViewState.B("foo")
+
+          eventsS.emit("42")
+          awaitItem() shouldBe ViewState.A(42)
+
+          eventsI.emit(1)
+          eventsS.emit("hi")
+          eventsS.emit("there")
+          eventsI.emit(2)
+          awaitItem() shouldBe ViewState.A(1)
+          awaitItem() shouldBe ViewState.A(2)
+
+          eventsI.emit(42)
+          awaitItem() shouldBe ViewState.B("foo")
         }
       }
 
@@ -606,6 +656,13 @@ class MachineDslTest : ShouldSpec({
     }
   }
 })
+
+private fun <T> Flow<T>.delayUntilCompletionOf(other: Flow<*>): Flow<T> {
+  return flow {
+    other.collect()
+    emitAll(this@delayUntilCompletionOf)
+  }
+}
 
 private sealed class ViewState {
   data class A(val value: Int) : ViewState()

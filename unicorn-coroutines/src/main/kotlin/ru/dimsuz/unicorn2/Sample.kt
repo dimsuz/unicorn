@@ -20,6 +20,8 @@ data class State(
 )
 
 val m1 = machine<CompoundState, Unit> {
+  initial = CompoundState.State1("hello") to null
+
   onEach(events) {
     transitionTo { state, payload ->
       println("in 'root' state $state, having event $payload")

@@ -7,20 +7,21 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.transform
 
-fun <S : Any, E : Any> machine(
+inline fun <reified S : Any, E : Any> machine(
   init: MachineDsl<S, E>.() -> Unit
 ): Machine<S, E> {
   val events = MutableSharedFlow<E>(extraBufferCapacity = 12)
-  val machineDsl = MachineDsl<S, E>(events).apply(init)
+  val machineDsl = MachineDsl(events, S::class).apply(init)
   return buildMachine(
-    MachineConfig.create(
+    createMachineConfig(
       machineDsl
     ),
     events,
   )
 }
 
-private fun <S : Any, E : Any> buildMachine(
+@PublishedApi
+internal fun <S : Any, E : Any> buildMachine(
   machineConfig: MachineConfig<S, E>,
   eventFlow: MutableSharedFlow<E>,
 ): Machine<S, E> {
@@ -50,8 +51,8 @@ private fun <S : Any, E : Any> buildStatesFlow(
   actionScope: ActionScope<E>,
 ): Flow<S> {
   return machineConfig.transitions
-    .map { transitionConfig ->
-      transitionConfig.payloadSource.map { payload -> payload to transitionConfig }
+    .map { config ->
+      config.payloadSource.map { payload -> payload to config }
     }
     .merge()
     .runningFold(
@@ -64,15 +65,18 @@ private fun <S : Any, E : Any> buildStatesFlow(
 }
 
 /**
- * A copy of runningFold implementation with the "lazy" initial value
+ * A copy of runningFold implementation with the "lazy" initial value and skipping null values
  */
-fun <T, R> Flow<T>.runningFold(initial: suspend () -> R, operation: suspend (accumulator: R, value: T) -> R): Flow<R> {
+fun <T, R> Flow<T>.runningFold(initial: suspend () -> R, operation: suspend (accumulator: R, value: T) -> R?): Flow<R> {
   return flow {
     var accumulator: R = initial()
     emit(accumulator)
     collect { value ->
-      accumulator = operation(accumulator, value)
-      emit(accumulator)
+      val result = operation(accumulator, value)
+      if (result != null) {
+        accumulator = result
+        emit(accumulator)
+      }
     }
   }
 }
@@ -81,11 +85,14 @@ private suspend fun <S : Any, E : Any> produceResult(
   stateBundle: TransitionResult<S>,
   payloadBundle: Pair<Any?, TransitionConfig<S, S, E>>,
   actionScope: ActionScope<E>,
-): TransitionResult<S> {
-  val payload = payloadBundle.first
+): TransitionResult<S>? {
+  val (payload, transitionConfig) = payloadBundle
   val previousState = stateBundle.state
-  val nextState = payloadBundle.second.transition(previousState, payload)
-  val action = payloadBundle.second.action?.let {
+  if (!transitionConfig.stateClass.isInstance(previousState)) {
+    return null
+  }
+  val nextState = transitionConfig.transition(previousState, payload)
+  val action = transitionConfig.action?.let {
     suspend { it(actionScope, previousState, nextState, payload) }
   }
   return TransitionResult(nextState, action)
@@ -102,7 +109,7 @@ private suspend fun <S : Any, E : Any> buildInitialState(
   )
 }
 
-internal data class TransitionResult<S : Any>(
+internal data class TransitionResult<out S : Any>(
   val state: S,
   val action: (suspend () -> Unit)?
 )
