@@ -1,5 +1,12 @@
+import org.gradle.api.tasks.testing.logging.TestLogEvent.STANDARD_OUT
+
 tasks.withType<Test> {
   useJUnitPlatform()
+
+  testLogging {
+    showStandardStreams = true
+    events = setOf(STANDARD_OUT)
+  }
 }
 
 dependencies {

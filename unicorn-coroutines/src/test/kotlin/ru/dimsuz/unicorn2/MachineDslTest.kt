@@ -5,6 +5,7 @@ import io.kotest.assertions.throwables.shouldThrowMessage
 import io.kotest.core.spec.style.ShouldSpec
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.types.shouldBeInstanceOf
 import io.kotest.property.Arb
 import io.kotest.property.arbitrary.arbitrary
 import io.kotest.property.arbitrary.int
@@ -14,6 +15,7 @@ import io.kotest.property.arbitrary.string
 import io.kotest.property.checkAll
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.emitAll
@@ -21,6 +23,7 @@ import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.onStart
+import kotlinx.coroutines.flow.update
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.time.ExperimentalTime
@@ -646,8 +649,133 @@ class MachineDslTest : ShouldSpec({
         }
       }
 
-      should("perform top level transitions") {
-        // top-level onEach should still work
+      should("conflate state, but perform actions") {
+        val callCount = MutableStateFlow(0)
+        val m = machine<Int, Unit> {
+          initial = 0 to null
+          onEach(flowOf(1, 2, 3)) {
+            transitionTo { state, payload ->
+              42
+            }
+
+            action { _, _, _ ->
+              callCount.update { it + 1 }
+            }
+          }
+        }
+
+        m.states.test {
+          awaitItem() shouldBe 0
+          awaitItem() shouldBe 42
+          awaitComplete()
+
+          callCount.value shouldBe 3
+        }
+
+      }
+
+      should("trigger parent state transitions and actions on child events") {
+        val events = MutableSharedFlow<String>()
+        val actionCallCounts = hashMapOf<String, Int>()
+        val m = machine<NestedState, Unit> {
+          initial = NestedState.State1("a") to null
+
+          onEach(events) {
+            action { _, _, _ ->
+              // NOTE! This doesn't represent "onEntry". It's incremented when **event** comes!
+              actionCallCounts.increment("top-level")
+            }
+          }
+
+          whenIn<NestedState.State1> {
+            onEach(events) {
+              transitionTo { _, _ ->
+                NestedState.State3.State3a(3)
+              }
+
+              action { _, _, _ ->
+                // NOTE! This doesn't represent "onEntry". It's incremented when **event** comes!
+                actionCallCounts.increment("state1")
+              }
+            }
+          }
+
+          whenIn<NestedState.State2> {
+            onEach(events) {
+              action { _, _, _ ->
+                actionCallCounts.increment("state2")
+              }
+            }
+          }
+
+          whenIn<NestedState.State3> {
+            onEach(events) {
+              action { _, _, _ ->
+                actionCallCounts.increment("state3")
+              }
+            }
+          }
+
+          whenIn<NestedState.State3.State3a> {
+            onEach(events) {
+              transitionTo { s, payload ->
+                if (payload == "3b") NestedState.State3.State3b(1) else s
+              }
+
+              action { _, _, _ ->
+                actionCallCounts.increment("state3.state3a")
+              }
+            }
+          }
+
+          whenIn<NestedState.State3.State3b> {
+            onEach(events) {
+              action { _, _, _ ->
+                actionCallCounts.increment("state3.state3b")
+              }
+            }
+          }
+        }
+
+        m.states.test {
+          awaitItem() shouldBe NestedState.State1("a")
+          actionCallCounts shouldBe emptyMap()
+
+          events.emit("foo")
+          awaitItem().shouldBeInstanceOf<NestedState.State3.State3a>()
+          actionCallCounts shouldBe mapOf(
+            "top-level" to 1,
+            "state1" to 1,
+          )
+
+          events.emit("foo") // staying in 3a, but updating counts
+          awaitItem().shouldBeInstanceOf<NestedState.State3.State3a>()
+          actionCallCounts shouldBe mapOf(
+            "top-level" to 2,
+            "state1" to 1,
+            "state3" to 1,
+            "state3.state3a" to 1,
+          )
+
+          events.emit("3b")
+          awaitItem().shouldBeInstanceOf<NestedState.State3.State3b>()
+          actionCallCounts shouldBe mapOf(
+            "top-level" to 3,
+            "state1" to 1,
+            "state3" to 2,
+            "state3.state3a" to 2,
+          )
+
+          events.emit("foo")
+          awaitItem().shouldBeInstanceOf<NestedState.State3.State3b>()
+          actionCallCounts shouldBe mapOf(
+            "top-level" to 4,
+            "state1" to 1,
+            "state3" to 3,
+            "state3.state3a" to 2,
+            "state3.state3b" to 1,
+          )
+        }
       }
 
       should("keep only payload sources active in a current sub-state") {
@@ -656,6 +784,11 @@ class MachineDslTest : ShouldSpec({
     }
   }
 })
+
+private fun <K> MutableMap<K, Int>.increment(key: K): MutableMap<K, Int> {
+  this.compute(key) { _, v -> (v ?: 0) + 1}
+  return this
+}
 
 private fun <T> Flow<T>.delayUntilCompletionOf(other: Flow<*>): Flow<T> {
   return flow {
@@ -672,6 +805,20 @@ private sealed class ViewState {
 private sealed class Event {
   data class E1(val value: Int) : Event()
   data class E2(val value: String) : Event()
+}
+
+private sealed class NestedState {
+  data class State1(val name: String) : NestedState()
+  data class State2(val price: Int) : NestedState()
+
+  sealed class State3 : NestedState() {
+    data class State3a(
+      val i: Int,
+    ) : State3()
+    data class State3b(
+      val i: Int,
+    ) : State3()
+  }
 }
 
 typealias ActionArgs<S, P> = Triple<S, S, P>
