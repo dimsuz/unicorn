@@ -46,7 +46,8 @@ internal fun <S : Any, E : Any> buildMachine(
   }
 }
 
-private fun <S : Any, E : Any> buildStatesFlow(
+// TODO remove before release
+private fun <S : Any, E : Any> buildStatesFlowLegacy(
   machineConfig: MachineConfig<S, E>,
   actionScope: ActionScope<E>,
 ): Flow<S> {
@@ -62,6 +63,32 @@ private fun <S : Any, E : Any> buildStatesFlow(
       emit(result.state)
       result.action?.invoke()
     }
+}
+
+private fun <S : Any, E : Any> buildStatesFlow(
+  machineConfig: MachineConfig<S, E>,
+  actionScope: ActionScope<E>
+): Flow<S> {
+  return flow {
+    var transitionResult = buildInitialState(machineConfig.initial, actionScope)
+    emit(transitionResult.state)
+    transitionResult.action?.invoke()
+    machineConfig
+      .transitions
+      .map { config -> config.payloadSource.map { payload -> payload to config } }
+      .merge()
+      .collect { payloadBundle ->
+        val result = produceResult(transitionResult, payloadBundle, actionScope)
+        if (result != null) {
+          val previousResult = transitionResult
+          transitionResult = result
+          if (previousResult.state != result.state) {
+            emit(result.state)
+          }
+          result.action?.invoke()
+        }
+      }
+  }
 }
 
 /**

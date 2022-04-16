@@ -8,6 +8,7 @@ import io.kotest.matchers.shouldBe
 import io.kotest.matchers.types.shouldBeInstanceOf
 import io.kotest.property.Arb
 import io.kotest.property.arbitrary.arbitrary
+import io.kotest.property.arbitrary.filter
 import io.kotest.property.arbitrary.int
 import io.kotest.property.arbitrary.list
 import io.kotest.property.arbitrary.next
@@ -96,7 +97,11 @@ class MachineDslTest : ShouldSpec({
     }
 
     should("perform transitions given discrete events") {
-      checkAll(Arb.list(Arb.events(), 0..20)) { events: List<Event> ->
+      val eventsGen = Arb.list(
+        Arb.events().filter { (it !is Event.E1 || it.value != 0) && (it !is Event.E2 || it.value != "") },
+        0..20
+      )
+      checkAll(iterations = 100, eventsGen) { events: List<Event> ->
         // Arrange
         val m = machine<Pair<List<Int>, String>, Event> {
           initial = (listOf(3) to "") to null
@@ -159,7 +164,6 @@ class MachineDslTest : ShouldSpec({
 
       m.states.test {
         awaitItem() shouldBe listOf(3)
-        awaitItem() shouldBe listOf(3)
         awaitComplete()
       }
     }
@@ -175,7 +179,6 @@ class MachineDslTest : ShouldSpec({
 
       m.states.test {
         m.send(Event.E1(24))
-        awaitItem() shouldBe listOf(3)
         awaitItem() shouldBe listOf(3)
       }
     }
@@ -225,15 +228,15 @@ class MachineDslTest : ShouldSpec({
       val m = machine<List<Int>, Unit> {
         initial = listOf(3) to null
         onEach(flowOf(10, 20, 30)) {
-          transitionTo { state, _ ->
+          transitionTo { state, i ->
             firstBlockCallCount += 1
-            state
+            state.plus(i)
           }
         }
         onEach(flowOf("a", "b", "c")) {
-          transitionTo { state, _ ->
+          transitionTo { state, s ->
             secondBlockCallCount += 1
-            state
+            state.plus(s.length)
           }
         }
       }
@@ -251,7 +254,7 @@ class MachineDslTest : ShouldSpec({
       val m = machine<List<Int>, Unit> {
         initial = listOf(3) to null
         onEach(flowOf(10, 20, 30).onStart { count.incrementAndGet() }) {
-          transitionTo { state, _ -> state }
+          transitionTo { state, i -> state.plus(i) }
         }
       }
 
@@ -261,6 +264,30 @@ class MachineDslTest : ShouldSpec({
       }
 
       count.get() shouldBe 1
+    }
+
+    should("conflate state, but perform actions") {
+      val callCount = MutableStateFlow(0)
+      val m = machine<Int, Unit> {
+        initial = 0 to null
+        onEach(flowOf(1, 2, 3)) {
+          transitionTo { state, payload ->
+            42
+          }
+
+          action { _, _, _ ->
+            callCount.update { it + 1 }
+          }
+        }
+      }
+
+      m.states.test {
+        awaitItem() shouldBe 0
+        awaitItem() shouldBe 42
+        awaitComplete()
+
+        callCount.value shouldBe 3
+      }
     }
   }
 
@@ -286,7 +313,7 @@ class MachineDslTest : ShouldSpec({
       val m = machine<List<Int>, Unit> {
         initial = listOf(3) to null
         onEach(flowOf(1, 2, 3, 4)) {
-          transitionTo { state, _ -> state }
+          transitionTo { state, i -> state.plus(i) }
           action { _, _, _ -> count += 1 }
         }
       }
@@ -413,9 +440,7 @@ class MachineDslTest : ShouldSpec({
       }
 
       m.states.test {
-        repeat(4) {
-          awaitItem()
-        }
+        awaitItem()
         awaitComplete()
 
         count shouldBe 3
@@ -439,9 +464,7 @@ class MachineDslTest : ShouldSpec({
         m.send(Event.E1(2))
         m.send(Event.E1(3))
 
-        repeat(4) {
-          awaitItem()
-        }
+        awaitItem()
 
         count shouldBe 3
       }
@@ -494,7 +517,7 @@ class MachineDslTest : ShouldSpec({
 
       m.states.test {
         var lastState: Int? = null
-        repeat(5) {
+        repeat(3) {
           lastState = awaitItem()
         }
 
@@ -524,7 +547,7 @@ class MachineDslTest : ShouldSpec({
         m.send(Event.E2("llo"))
 
         var lastState: Int? = null
-        repeat(5) {
+        repeat(3) {
           val s = awaitItem()
           lastState = s
         }
@@ -557,11 +580,8 @@ class MachineDslTest : ShouldSpec({
 
       m.states.test {
         awaitItem()
-        awaitItem()
         m.send(Event.E1(33))
-        awaitItem()
         m.send(Event.E2("hello"))
-        awaitItem()
 
         onEachActionThreadId.get() shouldBe testThreadId
         onActionThreadId.get() shouldBe testThreadId
@@ -647,31 +667,6 @@ class MachineDslTest : ShouldSpec({
           eventsI.emit(42)
           awaitItem() shouldBe ViewState.B("foo")
         }
-      }
-
-      should("conflate state, but perform actions") {
-        val callCount = MutableStateFlow(0)
-        val m = machine<Int, Unit> {
-          initial = 0 to null
-          onEach(flowOf(1, 2, 3)) {
-            transitionTo { state, payload ->
-              42
-            }
-
-            action { _, _, _ ->
-              callCount.update { it + 1 }
-            }
-          }
-        }
-
-        m.states.test {
-          awaitItem() shouldBe 0
-          awaitItem() shouldBe 42
-          awaitComplete()
-
-          callCount.value shouldBe 3
-        }
-
       }
 
       should("trigger parent state transitions and actions on child events") {
@@ -786,7 +781,7 @@ class MachineDslTest : ShouldSpec({
 })
 
 private fun <K> MutableMap<K, Int>.increment(key: K): MutableMap<K, Int> {
-  this.compute(key) { _, v -> (v ?: 0) + 1}
+  this.compute(key) { _, v -> (v ?: 0) + 1 }
   return this
 }
 
