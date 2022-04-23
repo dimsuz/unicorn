@@ -52,7 +52,7 @@ class MachineDslTest : ShouldSpec({
 
   context("transitions") {
     should("perform transitions given streamed payloads") {
-      checkAll { initialValue: List<Int>, payloads: List<Int> ->
+      checkAll(iterations = 100) { initialValue: List<Int>, payloads: List<Int> ->
         // Arrange
         val m = machine<List<Int>, Unit> {
           initial = initialValue to null
@@ -99,7 +99,7 @@ class MachineDslTest : ShouldSpec({
     should("perform transitions given discrete events") {
       val eventsGen = Arb.list(
         Arb.events().filter { (it !is Event.E1 || it.value != 0) && (it !is Event.E2 || it.value != "") },
-        0..20
+        1..20
       )
       checkAll(iterations = 100, eventsGen) { events: List<Event> ->
         // Arrange
@@ -677,7 +677,8 @@ class MachineDslTest : ShouldSpec({
 
           onEach(events) {
             action { _, _, _ ->
-              // NOTE! This doesn't represent "onEntry". It's incremented when **event** comes!
+              println("top-level receiving")
+              // NOTE! This doesn't represent "onEntry". It's incremented when **event** is received!
               actionCallCounts.increment("top-level")
             }
           }
@@ -690,6 +691,7 @@ class MachineDslTest : ShouldSpec({
 
               action { _, _, _ ->
                 // NOTE! This doesn't represent "onEntry". It's incremented when **event** comes!
+                println("state1 receiving")
                 actionCallCounts.increment("state1")
               }
             }
@@ -706,6 +708,7 @@ class MachineDslTest : ShouldSpec({
           whenIn<NestedState.State3> {
             onEach(events) {
               action { _, _, _ ->
+                println("state3 receiving")
                 actionCallCounts.increment("state3")
               }
             }
@@ -718,6 +721,7 @@ class MachineDslTest : ShouldSpec({
               }
 
               action { _, _, _ ->
+                println("state3a receiving")
                 actionCallCounts.increment("state3.state3a")
               }
             }
@@ -744,7 +748,6 @@ class MachineDslTest : ShouldSpec({
           )
 
           events.emit("foo") // staying in 3a, but updating counts
-          awaitItem().shouldBeInstanceOf<NestedState.State3.State3a>()
           actionCallCounts shouldBe mapOf(
             "top-level" to 2,
             "state1" to 1,
@@ -762,7 +765,6 @@ class MachineDslTest : ShouldSpec({
           )
 
           events.emit("foo")
-          awaitItem().shouldBeInstanceOf<NestedState.State3.State3b>()
           actionCallCounts shouldBe mapOf(
             "top-level" to 4,
             "state1" to 1,

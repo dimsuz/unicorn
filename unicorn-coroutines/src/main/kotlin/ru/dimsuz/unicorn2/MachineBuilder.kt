@@ -1,11 +1,13 @@
 package ru.dimsuz.unicorn2
 
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.async
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
-import kotlinx.coroutines.flow.transform
 
 inline fun <reified S : Any, E : Any> machine(
   init: MachineDsl<S, E>.() -> Unit
@@ -34,7 +36,7 @@ internal fun <S : Any, E : Any> buildMachine(
 
     override val initial: Pair<suspend () -> S, (suspend ActionScope<E>.(S) -> Unit)?> = machineConfig.initial
 
-    override val states: Flow<S> get() = buildStatesFlow(machineConfig, actionScope)
+    override val states: Flow<S> = buildStatesFlow(machineConfig, actionScope)
 
     override suspend fun send(e: E) {
       eventFlow.emit(e)
@@ -46,63 +48,49 @@ internal fun <S : Any, E : Any> buildMachine(
   }
 }
 
-// TODO remove before release
-private fun <S : Any, E : Any> buildStatesFlowLegacy(
-  machineConfig: MachineConfig<S, E>,
-  actionScope: ActionScope<E>,
-): Flow<S> {
-  return machineConfig.transitions
-    .map { config ->
-      config.payloadSource.map { payload -> payload to config }
-    }
-    .merge()
-    .runningFold(
-      { buildInitialState(machineConfig.initial, actionScope) }
-    ) { accumulator, value -> produceResult(accumulator, value, actionScope) }
-    .transform { result ->
-      emit(result.state)
-      result.action?.invoke()
-    }
-}
-
 private fun <S : Any, E : Any> buildStatesFlow(
   machineConfig: MachineConfig<S, E>,
   actionScope: ActionScope<E>
 ): Flow<S> {
-  return flow {
+  return channelFlow {
     var transitionResult = buildInitialState(machineConfig.initial, actionScope)
-    emit(transitionResult.state)
+    send(transitionResult.state)
     transitionResult.action?.invoke()
-    machineConfig
-      .transitions
-      .map { config -> config.payloadSource.map { payload -> payload to config } }
-      .merge()
-      .collect { payloadBundle ->
-        val result = produceResult(transitionResult, payloadBundle, actionScope)
-        if (result != null) {
-          val previousResult = transitionResult
-          transitionResult = result
-          if (previousResult.state != result.state) {
-            emit(result.state)
-          }
-          result.action?.invoke()
-        }
-      }
-  }
-}
 
-/**
- * A copy of runningFold implementation with the "lazy" initial value and skipping null values
- */
-fun <T, R> Flow<T>.runningFold(initial: suspend () -> R, operation: suspend (accumulator: R, value: T) -> R?): Flow<R> {
-  return flow {
-    var accumulator: R = initial()
-    emit(accumulator)
-    collect { value ->
-      val result = operation(accumulator, value)
-      if (result != null) {
-        accumulator = result
-        emit(accumulator)
+    var subscribeToNextState = true
+
+    while (subscribeToNextState) {
+      val job = async {
+        machineConfig
+          .transitions
+          .filter {
+            it.stateClass.isInstance(transitionResult.state)
+          }
+          .map { config -> config.payloadSource.map { payload -> payload to config } }
+          .merge()
+          .collect { payloadBundle ->
+            val result = produceResult(transitionResult, payloadBundle, actionScope)
+            if (result != null) {
+              val previousResult = transitionResult
+              transitionResult = result
+              if (previousResult.state != result.state) {
+                send(result.state)
+              }
+              result.action?.invoke()
+              if (!payloadBundle.second.stateClass.isInstance(result.state)) {
+                this.cancel(message = "sub_state_switch")
+              }
+            }
+          }
+      }
+      subscribeToNextState = try {
+        job.await()
+        // either all collects are finished (when no hot flows) or some non-cancellation exception thrown
+        false
+      } catch (e: CancellationException) {
+        e.message == "sub_state_switch"
+      } catch (e: Throwable) {
+        throw e
       }
     }
   }
