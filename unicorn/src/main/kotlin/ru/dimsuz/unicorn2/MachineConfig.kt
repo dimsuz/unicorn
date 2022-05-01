@@ -7,7 +7,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlin.reflect.KClass
 
 internal data class MachineConfig<S : Any, E : Any>(
-  val initial: Pair<suspend () -> S, (suspend ActionScope<E>.(S) -> Unit)?>,
+  val initial: Pair<suspend () -> S, (suspend (S) -> Unit)?>,
   val transitions: List<TransitionConfig<S, S, E>>,
 )
 

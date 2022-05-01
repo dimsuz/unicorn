@@ -37,7 +37,7 @@ internal fun <S : Any, E : Any> buildMachine(
       }
     }
 
-    override val initial: Pair<suspend () -> S, (suspend ActionScope<E>.(S) -> Unit)?> = machineConfig.initial
+    override val initial: Pair<suspend () -> S, (suspend (S) -> Unit)?> = machineConfig.initial
 
     override val states: Flow<S> = buildStatesFlow(machineConfig, actionScope)
 
@@ -56,7 +56,7 @@ private fun <S : Any, E : Any> buildStatesFlow(
   actionScope: ActionScope<E>
 ): Flow<S> {
   return channelFlow {
-    var transitionResult = buildInitialState(machineConfig.initial, actionScope)
+    var transitionResult = buildInitialState(machineConfig.initial)
     send(transitionResult.state)
     transitionResult.action?.invoke()
 
@@ -116,14 +116,13 @@ private suspend fun <S : Any, E : Any> produceResult(
   return TransitionResult(nextState, action)
 }
 
-private suspend fun <S : Any, E : Any> buildInitialState(
-  config: Pair<suspend () -> S, (suspend ActionScope<E>.(S) -> Unit)?>,
-  actionScope: ActionScope<E>,
+private suspend fun <S : Any> buildInitialState(
+  config: Pair<suspend () -> S, (suspend (S) -> Unit)?>,
 ): TransitionResult<S> {
   val s = config.first()
   return TransitionResult(
     state = s,
-    action = { config.second?.invoke(actionScope, s) }
+    action = { config.second?.invoke(s) }
   )
 }
 

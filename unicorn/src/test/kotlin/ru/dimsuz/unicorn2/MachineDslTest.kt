@@ -134,22 +134,18 @@ class MachineDslTest : ShouldSpec({
       }
     }
 
-    should("respect event emitted from initial action") {
+    should("execute initial action") {
+      val actionResult = MutableStateFlow<Int?>(null)
       val m = machine<Int, Event> {
         initial = 3 to {
-          sendEvent(Event.E1(33))
-        }
-
-        onEach(events.filterIsInstance<Event.E1>()) {
-          transitionTo { _, e ->
-            e.value
-          }
+          actionResult.emit(it * 2)
         }
       }
 
       m.states.test {
         awaitItem() shouldBe 3
-        awaitItem() shouldBe 33
+        awaitComplete()
+        actionResult.value shouldBe 6
       }
     }
 

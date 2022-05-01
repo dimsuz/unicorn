@@ -14,8 +14,8 @@ class MachineDsl<S : Any, E : Any> @PublishedApi internal constructor(
   val events: Flow<E>,
   @PublishedApi internal val klass: KClass<out S>
 ) {
-  var initial: Pair<S, (suspend ActionScope<E>.(S) -> Unit)?>? = null
-  var initialLazy: Pair<suspend () -> S, (suspend ActionScope<E>.(S) -> Unit)?>? = null
+  var initial: Pair<S, (suspend (S) -> Unit)?>? = null
+  var initialLazy: Pair<suspend () -> S, (suspend (S) -> Unit)?>? = null
 
   @PublishedApi
   internal val transitions: MutableMap<KClass<out S>, MutableList<TransitionDsl<out S, S, Any, E>>> = mutableMapOf()
