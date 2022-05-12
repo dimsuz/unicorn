@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.0.0 - TODO
+## 2.0.0 - TODO
 * Remove `unicorn-lint` sub-project. It wasn't finished, wasn't used, wasn't working.
 * Remove `unicorn-rxjava2` support. Use coroutine's rxjava adapters if you need to work with RxJava streams
 * Add support for nested states, expressed through a `sealed class`
