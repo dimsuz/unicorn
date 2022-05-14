@@ -4,6 +4,8 @@
 package ru.dimsuz.unicorn2
 
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flowOf
 
 public sealed class CompoundState {
@@ -96,5 +98,49 @@ public val m2: Machine<State, Unit> = machine {
       delay(3000)
       sendEvent(Unit)
     }
+  }
+}
+
+public sealed class ViewState {
+  public object Loading : ViewState()
+  public data class Error(val text: String) : ViewState()
+  public data class Content(val title: String, val subtitle: String) : ViewState()
+}
+
+public val contentSource: Flow<Pair<String, String>> = flowOf("Hello" to "World")
+public val errorSource: Flow<Throwable> = emptyFlow()
+public val niceThingsSource: Flow<String> = flowOf("Friends", "Trees", "Sky")
+
+public val screenMachine: Machine<ViewState, Unit> = machine<ViewState, Unit> {
+  initial = ViewState.Loading to null
+
+  whenIn<ViewState.Loading> {
+    onEach(contentSource) {
+      transitionTo { state, (title, subtitle) ->
+        ViewState.Content(title, subtitle)
+      }
+    }
+
+    onEach(errorSource) {
+      transitionTo { state, error ->
+        ViewState.Error(error.message ?: "unknown error")
+      }
+
+      action { state, newState, error ->
+        error.printStackTrace()
+      }
+    }
+  }
+
+  whenIn<ViewState.Content> {
+    onEach(niceThingsSource) {
+      transitionTo { state, thing ->
+        state.copy(subtitle = thing)
+      }
+    }
+  }
+
+  whenIn<ViewState.Error> {
+    // onEach(retryClicks) { /* configuration of recover transition */ }
   }
 }
