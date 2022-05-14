@@ -12,7 +12,7 @@ import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
 
-inline fun <reified S : Any, E : Any> machine(
+public inline fun <reified S : Any, E : Any> machine(
   init: MachineDsl<S, E>.() -> Unit
 ): Machine<S, E> {
   val events = MutableSharedFlow<E>(extraBufferCapacity = 12)

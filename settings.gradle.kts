@@ -1,2 +1,2 @@
 rootProject.name = "unicorn"
-include("unicorn")
+include("unicorn2")

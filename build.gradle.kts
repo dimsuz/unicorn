@@ -1,139 +1,133 @@
+import org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension
+import org.jetbrains.kotlin.gradle.plugin.KotlinMultiplatformPluginWrapper
+
 plugins {
-  kotlin("jvm") version libs.versions.kotlin
-  `maven-publish`
-  signing
-  alias(libs.plugins.dokka)
+  alias(libs.plugins.kotlinMultiplatform) apply false
+  alias(libs.plugins.dokka) apply false
+  alias(libs.plugins.spotless)
 }
 
 allprojects {
+  buildscript {
+    repositories {
+      mavenCentral()
+    }
+  }
   repositories {
     mavenCentral()
   }
 }
 
-val ktlint: Configuration by configurations.creating
-
-dependencies {
-  ktlint(libs.ktlint)
-}
-
-val outputDir = "${project.buildDir}/reports/ktlint/"
-val inputFiles = project.fileTree(mapOf("dir" to ".", "include" to "**/*.kt"))
-
-val ktlintCheck by tasks.creating(JavaExec::class) {
-  inputs.files(inputFiles)
-  outputs.dir(outputDir)
-
-  description = "Check Kotlin code style."
-  classpath = ktlint
-  group = "verification"
-  main = "com.pinterest.ktlint.Main"
-  args = listOf("**/*.kt")
-}
-
-val ktlintFormat by tasks.creating(JavaExec::class) {
-  inputs.files(inputFiles)
-  outputs.dir(outputDir)
-
-  description = "Fix Kotlin code style deviations."
-  classpath = ktlint
-  group = "verification"
-  main = "com.pinterest.ktlint.Main"
-  args = listOf("-F", "**/*.kt")
-}
-
 subprojects {
-  apply(plugin = "kotlin")
-  apply(plugin = "maven-publish")
-  apply(plugin = "org.jetbrains.dokka")
-  apply(plugin = "signing")
+  plugins.withType<MavenPublishPlugin> {
+    apply(plugin = "org.gradle.signing")
 
-  tasks {
-    compileKotlin {
-      kotlinOptions.jvmTarget = "1.8"
-    }
-    compileTestKotlin {
-      kotlinOptions.jvmTarget = "1.8"
-    }
-  }
+    plugins.withType<KotlinMultiplatformPluginWrapper> {
+      apply(plugin = libs.plugins.dokka.get().pluginId)
 
-  val dokkaJar by tasks.creating(org.gradle.jvm.tasks.Jar::class) {
-    group = JavaBasePlugin.DOCUMENTATION_GROUP
-    archiveClassifier.set("javadoc")
-    from(tasks.dokkaHtml)
-  }
+      val dokkaHtml by tasks.existing(org.jetbrains.dokka.gradle.DokkaTask::class)
 
-  val sourcesJar by tasks.creating(org.gradle.jvm.tasks.Jar::class) {
-    archiveClassifier.set("sources")
-    from(sourceSets.main.get().allSource)
-  }
+      val javadocJar by tasks.registering(Jar::class) {
+        group = LifecycleBasePlugin.BUILD_GROUP
+        description = "Assembles a jar archive containing the Javadoc API documentation."
+        archiveClassifier.set("javadoc")
+        from(dokkaHtml)
+      }
 
-  val pomArtifactId: String? by project
-  if (pomArtifactId != null) {
-    publishing {
-      publications {
-        create<MavenPublication>("maven") {
-          val versionName: String by project
-          val pomGroupId: String by project
-          groupId = pomGroupId
-          artifactId = pomArtifactId
-          version = versionName
-          from(components["java"])
+      configure<KotlinMultiplatformExtension> {
+        explicitApi()
 
-          artifact(dokkaJar)
-          artifact(sourcesJar)
-
-          pom {
-            val pomDescription: String by project
-            val pomUrl: String by project
-            val pomName: String by project
-            description.set(pomDescription)
-            url.set(pomUrl)
-            name.set(pomName)
-            scm {
-              val pomScmUrl: String by project
-              val pomScmConnection: String by project
-              val pomScmDevConnection: String by project
-              url.set(pomScmUrl)
-              connection.set(pomScmConnection)
-              developerConnection.set(pomScmDevConnection)
-            }
-            licenses {
-              license {
-                val pomLicenseName: String by project
-                val pomLicenseUrl: String by project
-                val pomLicenseDist: String by project
-                name.set(pomLicenseName)
-                url.set(pomLicenseUrl)
-                distribution.set(pomLicenseDist)
-              }
-            }
-            developers {
-              developer {
-                val pomDeveloperId: String by project
-                val pomDeveloperName: String by project
-                id.set(pomDeveloperId)
-                name.set(pomDeveloperName)
-              }
-            }
+        jvm {
+          mavenPublication {
+            artifact(javadocJar.get())
           }
         }
+
+        ios()
       }
-      signing {
-        sign(publishing.publications["maven"])
-      }
+    }
+
+    configure<PublishingExtension> {
       repositories {
         maven {
-          val releasesRepoUrl = uri("https://oss.sonatype.org/service/local/staging/deploy/maven2/")
-          val snapshotsRepoUrl = uri("https://oss.sonatype.org/content/repositories/snapshots/")
+          name = "Kode"
+          val releaseRepoPath = project.property("kodeReleaseRepoPath")?.toString() ?: error("null release repo")
+          val snapshotsRepoPath = project.property("kodeSnapshotsRepoPath")?.toString() ?: error("null snapshots repo")
+          val releasesRepoUrl = uri(releaseRepoPath)
+          val snapshotsRepoUrl = uri(snapshotsRepoPath)
           val versionName: String by project
           url = if (versionName.endsWith("SNAPSHOT")) snapshotsRepoUrl else releasesRepoUrl
+          isAllowInsecureProtocol = true
           credentials {
-            username = project.property("NEXUS_USERNAME")?.toString()
-            password = project.property("NEXUS_PASSWORD")?.toString()
+            username = project.property("kodeMavenUser")?.toString()
+            password = project.property("kodeMavenPassword")?.toString()
           }
         }
       }
+
+      publications.withType<MavenPublication> {
+        val versionName: String by project
+        val pomGroupId: String by project
+        val pomArtifactId: String by project
+        groupId = pomGroupId
+        version = versionName
+        pom {
+          val pomDescription: String by project
+          val pomUrl: String by project
+          val pomName: String by project
+          description.set(pomDescription)
+          url.set(pomUrl)
+          name.set(pomName)
+//          artifactId = pomArtifactId
+          scm {
+            val pomScmUrl: String by project
+            val pomScmConnection: String by project
+            val pomScmDevConnection: String by project
+            url.set(pomScmUrl)
+            connection.set(pomScmConnection)
+            developerConnection.set(pomScmDevConnection)
+          }
+          licenses {
+            license {
+              val pomLicenseName: String by project
+              val pomLicenseUrl: String by project
+              val pomLicenseDist: String by project
+              name.set(pomLicenseName)
+              url.set(pomLicenseUrl)
+              distribution.set(pomLicenseDist)
+            }
+          }
+          developers {
+            developer {
+              val pomDeveloperId: String by project
+              val pomDeveloperName: String by project
+              id.set(pomDeveloperId)
+              name.set(pomDeveloperName)
+            }
+          }
+        }
+      }
+
+      configure<SigningExtension> {
+        sign(publications)
+      }
     }
+  }
+}
+
+spotless {
+  kotlin {
+    target("**/*.kt")
+    targetExclude("!**/build/**/*.*")
+    ktlint(libs.versions.ktlint.get()).userData(mapOf("indent_size" to "2", "max_line_length" to "120"))
+    trimTrailingWhitespace()
+    endWithNewline()
+  }
+
+  kotlinGradle {
+    target("**/*.gradle.kts")
+    ktlint(libs.versions.ktlint.get()).userData(mapOf("indent_size" to "2", "max_line_length" to "120"))
+    trimTrailingWhitespace()
+    endWithNewline()
   }
 }
