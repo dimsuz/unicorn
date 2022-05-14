@@ -68,7 +68,6 @@ subprojects {
       publications.withType<MavenPublication> {
         val versionName: String by project
         val pomGroupId: String by project
-        val pomArtifactId: String by project
         groupId = pomGroupId
         version = versionName
         pom {
@@ -78,7 +77,6 @@ subprojects {
           description.set(pomDescription)
           url.set(pomUrl)
           name.set(pomName)
-//          artifactId = pomArtifactId
           scm {
             val pomScmUrl: String by project
             val pomScmConnection: String by project
