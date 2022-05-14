@@ -1,0 +1,24 @@
+[versions]
+koTest = "5.2.3"
+ktlint = "0.45.2"
+coroutines = "1.6.1"
+kotlin = "1.6.10"
+dokka = "1.5.31"
+turbine = "0.7.0"
+
+[libraries]
+kotest-junit-runner = { module = "io.kotest:kotest-runner-junit5-jvm", version.ref = "koTest" }
+kotest-framework-engine = { module = "io.kotest:kotest-framework-engine", version.ref = "koTest" }
+kotest-assertions-core = { module = "io.kotest:kotest-assertions-core", version.ref = "koTest" }
+kotest-property = { module = "io.kotest:kotest-property", version.ref = "koTest" }
+ktlint = { module = "com.pinterest:ktlint", version.ref = "ktlint" }
+coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
+turbine = { module = "app.cash.turbine:turbine", version.ref = "turbine" }
+
+[bundles]
+koTestCommon = [ "kotest-assertions-core", "kotest-property", "kotest-framework-engine" ]
+koTestJvm = [ "kotest-junit-runner" ]
+coroutines = [ "coroutines-core" ]
+
+[plugins]
+dokka = { id = "org.jetbrains.dokka", version.ref = "dokka" }
