@@ -7,53 +7,33 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
 
-public inline fun <reified S : Any, E : Any> machine(
-  init: MachineDsl<S, E>.() -> Unit
-): Machine<S, E> {
-  val events = MutableSharedFlow<E>(extraBufferCapacity = 12)
-  val machineDsl = MachineDsl(events, S::class).apply(init)
+public inline fun <reified S : Any> machine(
+  init: MachineDsl<S>.() -> Unit
+): Machine<S> {
+  val machineDsl = MachineDsl(S::class).apply(init)
   return buildMachine(
     createMachineConfig(
       machineDsl
     ),
-    events,
   )
 }
 
 @PublishedApi
-internal fun <S : Any, E : Any> buildMachine(
-  machineConfig: MachineConfig<S, E>,
-  eventFlow: MutableSharedFlow<E>,
-): Machine<S, E> {
-  return object : Machine<S, E> {
-    private val actionScope = object : ActionScope<E> {
-      override fun sendEvent(event: E) {
-        eventFlow.tryEmit(event)
-      }
-    }
-
+internal fun <S : Any> buildMachine(
+  machineConfig: MachineConfig<S>,
+): Machine<S> {
+  return object : Machine<S> {
     override val initial: Pair<suspend () -> S, (suspend (S) -> Unit)?> = machineConfig.initial
-
-    override val states: Flow<S> = buildStatesFlow(machineConfig, actionScope)
-
-    override suspend fun send(e: E) {
-      eventFlow.emit(e)
-    }
-
-    override fun trySend(e: E): Boolean {
-      return eventFlow.tryEmit(e)
-    }
+    override val states: Flow<S> = buildStatesFlow(machineConfig)
   }
 }
 
-private fun <S : Any, E : Any> buildStatesFlow(
-  machineConfig: MachineConfig<S, E>,
-  actionScope: ActionScope<E>
+private fun <S : Any> buildStatesFlow(
+  machineConfig: MachineConfig<S>,
 ): Flow<S> {
   return channelFlow {
     var transitionResult = buildInitialState(machineConfig.initial)
@@ -72,7 +52,7 @@ private fun <S : Any, E : Any> buildStatesFlow(
           .map { config -> config.payloadSource.map { payload -> payload to config } }
           .merge()
           .collect { payloadBundle ->
-            val result = produceResult(transitionResult, payloadBundle, actionScope)
+            val result = produceResult(transitionResult, payloadBundle)
             if (result != null) {
               val previousResult = transitionResult
               transitionResult = result
@@ -99,10 +79,9 @@ private fun <S : Any, E : Any> buildStatesFlow(
   }
 }
 
-private suspend fun <S : Any, E : Any> produceResult(
+private suspend fun <S : Any> produceResult(
   stateBundle: TransitionResult<S>,
-  payloadBundle: Pair<Any?, TransitionConfig<S, S, E>>,
-  actionScope: ActionScope<E>,
+  payloadBundle: Pair<Any?, TransitionConfig<S, S>>,
 ): TransitionResult<S>? {
   val (payload, transitionConfig) = payloadBundle
   val previousState = stateBundle.state
@@ -111,7 +90,7 @@ private suspend fun <S : Any, E : Any> produceResult(
   }
   val nextState = transitionConfig.transition(previousState, payload)
   val action = transitionConfig.action?.let {
-    suspend { it(actionScope, previousState, nextState, payload) }
+    suspend { it(previousState, nextState, payload) }
   }
   return TransitionResult(nextState, action)
 }

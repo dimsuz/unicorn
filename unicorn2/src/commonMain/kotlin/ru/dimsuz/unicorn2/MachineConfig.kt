@@ -6,13 +6,13 @@ package ru.dimsuz.unicorn2
 import kotlinx.coroutines.flow.Flow
 import kotlin.reflect.KClass
 
-internal data class MachineConfig<S : Any, E : Any>(
+internal data class MachineConfig<S : Any>(
   val initial: Pair<suspend () -> S, (suspend (S) -> Unit)?>,
-  val transitions: List<TransitionConfig<S, S, E>>,
+  val transitions: List<TransitionConfig<S, S>>,
 )
 
 @PublishedApi
-internal fun <S : Any, E : Any> createMachineConfig(machineDsl: MachineDsl<S, E>): MachineConfig<S, E> {
+internal fun <S : Any> createMachineConfig(machineDsl: MachineDsl<S>): MachineConfig<S> {
   val initialStateConfig = machineDsl.initialLazy
     ?: machineDsl.initial?.let { initial -> suspend { initial.first } to initial.second }
     ?: error("initial transition is missing")
@@ -22,17 +22,17 @@ internal fun <S : Any, E : Any> createMachineConfig(machineDsl: MachineDsl<S, E>
   )
 }
 
-internal data class TransitionConfig<S : PS, PS : Any, E : Any>(
+internal data class TransitionConfig<S : PS, PS : Any>(
   val stateClass: KClass<*>,
   val payloadSource: Flow<Any?>,
   val transition: suspend (PS, Any?) -> PS,
-  val action: (suspend (scope: ActionScope<E>, PS, PS, Any?) -> Unit)?,
+  val action: (suspend (PS, PS, Any?) -> Unit)?,
 )
 
 @Suppress("UNCHECKED_CAST") // we know the types here
-private fun <S : PS, PS : Any, P, E : Any> TransitionDsl<S, PS, P, E>.toTransitionConfig(
+private fun <S : PS, PS : Any, P> TransitionDsl<S, PS, P>.toTransitionConfig(
   stateClass: KClass<out PS>,
-): TransitionConfig<PS, PS, E> {
+): TransitionConfig<PS, PS> {
   return TransitionConfig(
     stateClass = stateClass,
     payloadSource = eventPayloads,
@@ -41,6 +41,6 @@ private fun <S : PS, PS : Any, P, E : Any> TransitionDsl<S, PS, P, E>.toTransiti
       // sub-state and that this is enforced during flow construction (see MachineBuilder.kt)
       this.transition?.invoke(s as S, p as P) ?: s
     },
-    action = action as (suspend (scope: ActionScope<E>, PS, PS, Any?) -> Unit)?
+    action = action as (suspend (PS, PS, Any?) -> Unit)?
   )
 }

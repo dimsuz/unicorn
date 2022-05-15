@@ -5,6 +5,7 @@ package ru.dimsuz.unicorn2
 
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flowOf
 
@@ -24,7 +25,10 @@ public data class State(
   val price: Int,
 )
 
-public val m1: Machine<CompoundState, Unit> = machine {
+public val m1: Machine<CompoundState> = machine {
+
+  val events = MutableSharedFlow<Unit>(extraBufferCapacity = 12)
+
   initial = CompoundState.State1("hello") to null
 
   onEach(events) {
@@ -49,7 +53,7 @@ public val m1: Machine<CompoundState, Unit> = machine {
       }
 
       action { _: CompoundState.State1, _: CompoundState, _: String ->
-        sendEvent(Unit)
+        events.emit(Unit)
       }
     }
   }
@@ -87,7 +91,7 @@ public val m1: Machine<CompoundState, Unit> = machine {
   }
 }
 
-public val m2: Machine<State, Unit> = machine {
+public val m2: Machine<State> = machine {
   onEach(flowOf("Jacob")) {
     transitionTo { state, name ->
       delay(3000)
@@ -96,7 +100,7 @@ public val m2: Machine<State, Unit> = machine {
 
     action { _, _, _ ->
       delay(3000)
-      sendEvent(Unit)
+      println("action done")
     }
   }
 }
@@ -111,22 +115,22 @@ public val contentSource: Flow<Pair<String, String>> = flowOf("Hello" to "World"
 public val errorSource: Flow<Throwable> = emptyFlow()
 public val niceThingsSource: Flow<String> = flowOf("Friends", "Trees", "Sky")
 
-public val screenMachine: Machine<ViewState, Unit> = machine<ViewState, Unit> {
+public val screenMachine: Machine<ViewState> = machine {
   initial = ViewState.Loading to null
 
   whenIn<ViewState.Loading> {
     onEach(contentSource) {
-      transitionTo { state, (title, subtitle) ->
+      transitionTo { _, (title, subtitle) ->
         ViewState.Content(title, subtitle)
       }
     }
 
     onEach(errorSource) {
-      transitionTo { state, error ->
+      transitionTo { _, error ->
         ViewState.Error(error.message ?: "unknown error")
       }
 
-      action { state, newState, error ->
+      action { _, _, error ->
         error.printStackTrace()
       }
     }

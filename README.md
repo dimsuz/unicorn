@@ -17,7 +17,7 @@ data class State(
 val namesSource = flowOf("Jacob", "Wacob", "Petrob")
 val pricesSource = flowOf(160, 170, 115)
 
-val m = machine<State, Unit> {
+val m = machine<State> {
   onEach(namesSource) {
     transitionTo { state, name ->
       state.copy(name = name)
@@ -56,7 +56,7 @@ val contentSource = flowOf("Hello" to "World")
 val errorSource = emptyFlow<Throwable>() // empty... for now... ;)
 val niceThingsSource = flowOf("Friends", "Trees", "Sky")
 
-val screenMachine = machine<ViewState, Unit> {
+val screenMachine = machine<ViewState> {
   initial = ViewState.Loading to { /* no initial action */ }
 
   whenIn<ViewState.Loading> {
@@ -100,40 +100,6 @@ fun main() {
   }
 }
 
-```
-
-## Non reactive discreet events
-
-``` kotlin
-data class State(
-  val name: String,
-  val price: Int,
-)
-
-enum class Event { 
-  DiscreteEventPriceChange,
-  Random
-}
-
-val m = machine<State, Unit> {
-  onEach(flowOf("Jacob", "Wacob", "Cheesecake")) {
-    transitionTo { state, name ->
-      state.copy(name = name)
-    }
-
-    action { _, _, name ->
-      if (name == "Cheesecake") {
-        sendEvent(Unit)
-      }
-    }
-  }
-  
-  onEach(events.filter { it == Event.DiscreteEventPriceChange }) {
-    transitionTo { state, event -> 
-      state.copy(price = 160)
-    }
-  }
-}
 ```
 
 # Download

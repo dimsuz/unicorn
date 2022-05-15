@@ -1,5 +1,24 @@
 # Changelog
 
+## 2.1.0 - 2022-05-15
+* Remove built-in support for events
+
+    Previously this was nice to have bundled in, but now that `transitionTo`
+    and `action` are suspend functions, nothing stops you from easily doing
+    something like
+
+    ```kotlin
+    val events = MutableSharedFlow<Event>(extraBufferCapacity = 12)
+
+    machine<State> {
+      onEach(events) {
+        action {
+          events.emit(Event.Another)
+        }
+      }
+    }
+    ```
+
 ## 2.0.0 - 2022-05-14
 * Remove `unicorn-lint` sub-project. It wasn't finished, wasn't used, wasn't working.
 * Remove `unicorn-rxjava2` support. Use coroutine's rxjava adapters if you need to work with RxJava streams
