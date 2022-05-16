@@ -107,7 +107,7 @@ fun main() {
 The library is available on Maven Central:
 
 ```
-implementation "ru.dimsuz:unicorn2:2.0.0"
+implementation "ru.dimsuz:unicorn2:2.1.0"
 ```
 
 # License
