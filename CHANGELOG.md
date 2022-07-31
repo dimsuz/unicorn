@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.2.0 - 2022-07-31
+
+* Remove support for `initialLazy` state. This complicates things for library users, because it results in a state machine which semantically has no defined initial state, it's "suspended". The better way to do this (if needed) is for consumer to suspend until the initial state is ready and only after that construct the machine.
+
 ## 2.1.0 - 2022-05-15
 * Remove built-in support for events
 
