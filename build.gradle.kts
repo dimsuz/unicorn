@@ -114,14 +114,20 @@ spotless {
   kotlin {
     target("**/*.kt")
     targetExclude("!**/build/**/*.*")
-    ktlint(libs.versions.ktlint.get()).userData(mapOf("indent_size" to "2", "max_line_length" to "120"))
+    ktlint(libs.versions.ktlint.get())
+      .editorConfigOverride(
+        mapOf("indent_size" to "2", "max_line_length" to "120", "disabled_rules" to "trailing-comma")
+      )
     trimTrailingWhitespace()
     endWithNewline()
   }
 
   kotlinGradle {
     target("**/*.gradle.kts")
-    ktlint(libs.versions.ktlint.get()).userData(mapOf("indent_size" to "2", "max_line_length" to "120"))
+    ktlint(libs.versions.ktlint.get())
+      .editorConfigOverride(
+        mapOf("indent_size" to "2", "max_line_length" to "120", "disabled_rules" to "trailing-comma")
+      )
     trimTrailingWhitespace()
     endWithNewline()
   }
