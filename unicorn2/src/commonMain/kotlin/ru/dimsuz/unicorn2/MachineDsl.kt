@@ -14,7 +14,6 @@ public class MachineDsl<S : Any> @PublishedApi internal constructor(
   @PublishedApi internal val klass: KClass<out S>
 ) {
   public var initial: Pair<S, (suspend (S) -> Unit)?>? = null
-  public var initialLazy: Pair<suspend () -> S, (suspend (S) -> Unit)?>? = null
 
   @PublishedApi
   internal val transitions: MutableMap<KClass<out S>, MutableList<TransitionDsl<out S, S, Any>>> = mutableMapOf()

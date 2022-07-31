@@ -7,14 +7,13 @@ import kotlinx.coroutines.flow.Flow
 import kotlin.reflect.KClass
 
 internal data class MachineConfig<S : Any>(
-  val initial: Pair<suspend () -> S, (suspend (S) -> Unit)?>,
+  val initial: Pair<S, (suspend (S) -> Unit)?>,
   val transitions: List<TransitionConfig<S, S>>,
 )
 
 @PublishedApi
 internal fun <S : Any> createMachineConfig(machineDsl: MachineDsl<S>): MachineConfig<S> {
-  val initialStateConfig = machineDsl.initialLazy
-    ?: machineDsl.initial?.let { initial -> suspend { initial.first } to initial.second }
+  val initialStateConfig = machineDsl.initial?.let { initial -> initial.first to initial.second }
     ?: error("initial transition is missing")
   return MachineConfig(
     initialStateConfig,
