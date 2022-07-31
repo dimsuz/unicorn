@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
+import kotlin.reflect.KClass
 
 public inline fun <reified S : Any> machine(
   init: MachineDsl<S>.() -> Unit
@@ -18,22 +19,34 @@ public inline fun <reified S : Any> machine(
   return buildMachine(
     createMachineConfig(
       machineDsl
-    ),
+    )
+  )
+}
+
+public inline fun <S : Any> machine(
+  stateClass: KClass<S>,
+  init: MachineDsl<S>.() -> Unit
+): Machine<S> {
+  val machineDsl = MachineDsl(stateClass).apply(init)
+  return buildMachine(
+    createMachineConfig(
+      machineDsl
+    )
   )
 }
 
 @PublishedApi
 internal fun <S : Any> buildMachine(
-  machineConfig: MachineConfig<S>,
+  machineConfig: MachineConfig<S>
 ): Machine<S> {
   return object : Machine<S> {
-    override val initial: Pair<suspend () -> S, (suspend (S) -> Unit)?> = machineConfig.initial
+    override val initial: Pair<S, (suspend (S) -> Unit)?> = machineConfig.initial
     override val states: Flow<S> = buildStatesFlow(machineConfig)
   }
 }
 
 private fun <S : Any> buildStatesFlow(
-  machineConfig: MachineConfig<S>,
+  machineConfig: MachineConfig<S>
 ): Flow<S> {
   return channelFlow {
     var transitionResult = buildInitialState(machineConfig.initial)
@@ -81,7 +94,7 @@ private fun <S : Any> buildStatesFlow(
 
 private suspend fun <S : Any> produceResult(
   stateBundle: TransitionResult<S>,
-  payloadBundle: Pair<Any?, TransitionConfig<S, S>>,
+  payloadBundle: Pair<Any?, TransitionConfig<S, S>>
 ): TransitionResult<S>? {
   val (payload, transitionConfig) = payloadBundle
   val previousState = stateBundle.state
@@ -96,12 +109,11 @@ private suspend fun <S : Any> produceResult(
 }
 
 private suspend fun <S : Any> buildInitialState(
-  config: Pair<suspend () -> S, (suspend (S) -> Unit)?>,
+  config: Pair<S, (suspend (S) -> Unit)?>
 ): TransitionResult<S> {
-  val s = config.first()
   return TransitionResult(
-    state = s,
-    action = { config.second?.invoke(s) }
+    state = config.first,
+    action = { config.second?.invoke(config.first) }
   )
 }
 
